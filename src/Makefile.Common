@@ -47,5 +47,5 @@ sim_backend/msp430/%.o: sim_backend/msp430/%.c
 # The MSP430 backend and boards include the chip model's headers, which change its object layout:
 # rebuild them when the headers change (this Makefile doesn't track header dependencies otherwise).
 MSP430_HEADERS = $(wildcard sim_backend/msp430/*.h) sim_backend/bsim_msp430.h
-sim_backend/bsim_msp430.o sim_backend/msp430/fr2355.o sim_backend/msp430/timer_b.o: $(MSP430_HEADERS)
+sim_backend/bsim_msp430.o $(patsubst %.cc,%.o,$(wildcard sim_backend/msp430/*.cc)): $(MSP430_HEADERS)
 $(patsubst %.cc,%.o,$(wildcard boards/board_MSP430*.cc)): $(MSP430_HEADERS)

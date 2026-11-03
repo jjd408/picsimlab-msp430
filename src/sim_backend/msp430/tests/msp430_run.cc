@@ -2,12 +2,13 @@
  *
  *   msp430_run firmware.hex [--seconds S] [--tick HZ] [--pin PIN=LEVEL@TIME]... [--peek ADDR:WORDS]...
  *              [--edges PIN]... [--peek32 ADDR:N]... [--peek64 ADDR:N]... [--sample PIN@TIME]...
- *              [--duty PIN@FROM]...
+ *              [--duty PIN@FROM]... [--spi CLK,DATA,CS,CPOL,CPHA,MSBFIRST]
  *
  * --pin drives a package pin from outside at a simulated time (seconds), as a PICSimLab part would.
  * --peek prints 16-bit words of memory at the end (--peek32/--peek64: 32- or 64-bit values). --edges counts
  * level changes on a pin; --sample prints a pin's level at a time; --duty prints the fraction of time a pin
- * was high from a start time (seconds) to the end.
+ * was high from a start time (seconds) to the end. --spi decodes the bytes on a data pin as an SPI device in
+ * that mode would (bits counted while the active-high CS pin is high), to check what the pins carry.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +34,8 @@ int main(int argc, char** argv) {
     std::vector<int> edge_pins;
     std::vector<std::pair<unsigned, int>> peeks32, peeks64;
     std::vector<PinEvent> samples, duties;
+    int spi[6] = {0};
+    int use_spi = 0;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--seconds") && i + 1 < argc) {
             seconds = atof(argv[++i]);
@@ -69,6 +72,12 @@ int main(int argc, char** argv) {
                 return 2;
             }
             samples.push_back(e);
+        } else if (!strcmp(argv[i], "--spi") && i + 1 < argc) {
+            if (sscanf(argv[++i], "%d,%d,%d,%d,%d,%d", &spi[0], &spi[1], &spi[2], &spi[3], &spi[4], &spi[5]) != 6) {
+                fprintf(stderr, "bad --spi %s\n", argv[i]);
+                return 2;
+            }
+            use_spi = 1;
         } else if (!strcmp(argv[i], "--duty") && i + 1 < argc) {
             PinEvent e;
             if (sscanf(argv[++i], "%d@%lf", &e.pin, &e.time) != 2) {
@@ -94,6 +103,9 @@ int main(int argc, char** argv) {
 
     std::vector<int> last(edge_pins.size()), edges(edge_pins.size());
     std::vector<long> high(duties.size()), total(duties.size());
+    // SPI decoder: samples DATA on the leading clock edge (CPHA 0) or the trailing one (CPHA 1)
+    int spi_clk_last = use_spi ? chip->GetPinLevel(spi[0]) : 0, spi_bits = 0, spi_byte = 0, spi_cs_last = 0;
+    std::vector<int> spi_bytes;
     for (size_t k = 0; k < edge_pins.size(); k++)
         last[k] = chip->GetPinLevel(edge_pins[k]);
 
@@ -116,6 +128,30 @@ int main(int argc, char** argv) {
         chip->Tick();
         if (chip->halted)
             break;
+        if (use_spi) {
+            // A device samples the edge that ends a byte before chip select rises, which can happen in the
+            // same tick: use chip select as it was in the previous tick.
+            int c = chip->GetPinLevel(spi[0]);
+            int cs = chip->GetPinLevel(spi[2]);
+            if (!spi_cs_last) {
+                spi_bits = spi_byte = 0;  // deselected: start a new byte
+            } else if (c != spi_clk_last) {
+                int leading = c != spi[3];  // leaving the idle level
+                if (leading != spi[4]) {
+                    int bit = chip->GetPinLevel(spi[1]);
+                    if (spi[5])
+                        spi_byte = (spi_byte << 1) | bit;
+                    else
+                        spi_byte |= bit << spi_bits;
+                    if (++spi_bits == 8) {
+                        spi_bytes.push_back(spi_byte);
+                        spi_bits = spi_byte = 0;
+                    }
+                }
+            }
+            spi_clk_last = c;
+            spi_cs_last = cs;
+        }
         for (size_t k = 0; k < duties.size(); k++) {
             if (now >= duties[k].time) {
                 total[k]++;
@@ -140,6 +176,12 @@ int main(int argc, char** argv) {
     for (size_t k = 0; k < edge_pins.size(); k++)
         printf("pin %d (%s): %d edges, now %d\n", edge_pins[k], Fr2355::pins[edge_pins[k] - 1].name, edges[k],
                chip->GetPinLevel(edge_pins[k]));
+    if (use_spi) {
+        printf("spi:");
+        for (int b : spi_bytes)
+            printf(" %02X", b);
+        printf("\n");
+    }
     for (size_t k = 0; k < duties.size(); k++)
         printf("pin %d (%s): high %.1f%% of the time from %.3f s\n", duties[k].pin, Fr2355::pins[duties[k].pin - 1].name,
                total[k] ? 100.0 * high[k] / total[k] : 0.0, duties[k].time);

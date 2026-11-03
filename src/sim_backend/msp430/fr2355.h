@@ -15,6 +15,7 @@
 #include <string>
 
 #include "msp430_cpu.h"
+#include "eusci_b.h"
 #include "timer_b.h"
 
 class Fr2355 {
@@ -102,10 +103,11 @@ private:
     static int PortOffset(int port);  // 0 for odd-numbered ports (low byte), 1 for even
     uint8_t PortReg(int port, int reg) const { return regs[PortBase(port) + reg + PortOffset(port)]; };
     void UpdatePins(void);
-    int PeripheralOutput(int port, int bit, uint8_t* level);
+    int PeripheralOutput(int port, int bit, int dir, uint8_t* level);
     uint16_t PortIv(int port);
 
     TimerB tb[4];
+    EusciB ucb[2];
 
     // Clock system
     void UpdateClocks(void);

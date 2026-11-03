@@ -17,8 +17,10 @@ build lpm45 lpm45.c
 build timers timers.c
 build updown updown.c
 build timers_lpm3 timers.c -DSLEEP=LPM3_bits
+build spi spi.c
+build spi_m3lsb spi.c -DCFG=UCCKPL
 gcc -std=c99 -O2 -c ../msp430_cpu.c -o msp430_cpu.o
-g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc msp430_cpu.o
+g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc ../eusci_b.cc msp430_cpu.o
 
 fail=0
 check() {  # name, expected line, command...
@@ -91,4 +93,19 @@ check "updown: up/down mode, toggle/set output, CLLD" "pin 27 (P2.0): high 75.0%
 # In LPM3, as the handheld will sleep, ACLK keeps EXTCOMIN going.
 check "timers: EXTCOMIN keeps running in LPM3" "pin 37 (P5.0): 120 edges" \
     ./msp430_run timers_lpm3.hex --seconds 1 --tick 4e6 --edges 37
+
+# --- Step 4: eUSCI_B1 SPI master
+# The pins carry "MSP430", 5A C3 (loopback) and 11 22 33 44 (sent from the UCTXIFG interrupt in LPM0), decoded
+# from P4.5 (clock), P4.6 (SIMO) and P4.4 (STE) as a device in that SPI mode would. Received: 0xFF for each
+# polled byte (SOMI held high), then 5A C3 from the loopback; the interrupt sent 4 bytes.
+SPIBYTES="spi: 4D 53 50 34 33 30 5A C3 11 22 33 44"
+r=$(addr spi.elf done)
+for tick in 4e6 1e6; do
+    check "spi: mode 0, MSB first (the display's), tick $tick" "$SPIBYTES" \
+        ./msp430_run spi.hex --seconds 0.2 --tick $tick --pin 16=1@0 --spi 18,17,19,0,0,1
+    check "spi: mode 3, LSB first, tick $tick" "$SPIBYTES" \
+        ./msp430_run spi_m3lsb.hex --seconds 0.2 --tick $tick --pin 16=1@0 --spi 18,17,19,1,1,0
+done
+check "spi: received bytes, loopback, interrupt-driven sends" "$r: 600D 0004 FFFF FFFF FFFF C35A" \
+    ./msp430_run spi.hex --seconds 0.2 --tick 4e6 --pin 16=1@0 --peek $r:6
 exit $fail

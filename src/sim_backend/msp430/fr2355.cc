@@ -76,6 +76,7 @@ enum {
     VEC_PORT3 = 23,
     VEC_PORT2 = 24,
     VEC_PORT1 = 25,
+    VEC_EUSCI_B1 = 30,  // EUSCI_B0 is 31
     VEC_WDT = 34,
     VEC_TIMER3_B1 = 36,  // TIMERx_B1 = 42 - 2x (CCR1..n, TBIFG); TIMERx_B0 = 43 - 2x (CCR0)
     VEC_TIMER0_B0 = 43,
@@ -88,6 +89,18 @@ static const uint16_t TB_SIZE = 0x30;
 
 // Timer outputs and capture inputs on the TSSOP-38's pins (datasheet tables 6-63, 6-64, 6-67).
 // sel is (PxSEL1 << 1) | PxSEL0. TB3's pins are on port 6, which this package doesn't have.
+// eUSCI_B SPI: UCB0 on P1.0-P1.3, UCB1 on P4.4-P4.7, all with PxSEL = 01 (datasheet tables 6-63, 6-66).
+// The module sets these pins' directions itself, whatever PxDIR says.
+static const uint16_t UCB_BASE[2] = {0x0540, 0x05C0};
+static const uint16_t UCB_SIZE = 0x30;
+enum { UCB_STE, UCB_CLK, UCB_SIMO, UCB_SOMI };
+static const struct {
+    int port, bit, ucb, signal;
+} UCB_PINS[] = {
+    {1, 0, 0, UCB_STE}, {1, 1, 0, UCB_CLK}, {1, 2, 0, UCB_SIMO}, {1, 3, 0, UCB_SOMI},
+    {4, 4, 1, UCB_STE}, {4, 5, 1, UCB_CLK}, {4, 6, 1, UCB_SIMO}, {4, 7, 1, UCB_SOMI},
+};
+
 static const struct {
     int port, bit, sel, timer, ccr;
 } TB_PINS[] = {
@@ -128,6 +141,8 @@ Fr2355::Fr2355(void) {
     reset_pin = 1;
     for (int t = 0; t < 4; t++)
         tb[t].Init(TB_BASE[t], TB_CCRS[t]);
+    ucb[0].Init(UCB_BASE[0], "eUSCI_B0");
+    ucb[1].Init(UCB_BASE[1], "eUSCI_B1");
     PowerOnReset();
 }
 
@@ -191,6 +206,8 @@ void Fr2355::Puc(uint16_t reset_cause) {
 
     for (int t = 0; t < 4; t++)
         tb[t].Reset();
+    ucb[0].Reset();
+    ucb[1].Reset();
 
     // Hardware multiplier
     for (int a = MPY; a <= MPY32CTL0 + 1; a++)
@@ -285,6 +302,10 @@ uint16_t Fr2355::ReadReg16(uint16_t addr) {
     for (int t = 0; t < 4; t++) {
         if (addr >= TB_BASE[t] && addr < TB_BASE[t] + TB_SIZE)
             return tb[t].Read(addr - TB_BASE[t]);
+    }
+    for (int u = 0; u < 2; u++) {
+        if (addr >= UCB_BASE[u] && addr < UCB_BASE[u] + UCB_SIZE)
+            return ucb[u].Read(addr - UCB_BASE[u]);
     }
     switch (addr) {
         case WDTCTL:
@@ -386,6 +407,14 @@ void Fr2355::WriteReg16(uint16_t addr, uint16_t value) {
             return;
         }
     }
+    for (int u = 0; u < 2; u++) {
+        if (addr >= UCB_BASE[u] && addr < UCB_BASE[u] + UCB_SIZE) {
+            ucb[u].Write(addr - UCB_BASE[u], value);
+            if (ucb[u].TakeOutputChanged())
+                UpdatePins();
+            return;
+        }
+    }
     SetReg16(addr, value);
     if (addr >= 0x0200 && addr < 0x0260)
         UpdatePins();
@@ -429,6 +458,15 @@ void Fr2355::WriteReg8(uint16_t addr, uint8_t value) {
                 return;
             WriteReg16(word, (ReadReg16(word) & 0xFF00) | value);
             return;
+    }
+    for (int u = 0; u < 2; u++) {
+        if (word >= UCB_BASE[u] && word < UCB_BASE[u] + UCB_SIZE) {
+            if (addr & 1)
+                return;  // the eUSCI registers' high bytes hold nothing a byte write needs
+            uint16_t old = (word - UCB_BASE[u] == 0x0E) ? 0 : ucb[u].Read(word - UCB_BASE[u]);
+            WriteReg16(word, (old & 0xFF00) | value);
+            return;
+        }
     }
     for (int t = 0; t < 4; t++) {
         if (word >= TB_BASE[t] && word < TB_BASE[t] + TB_SIZE) {
@@ -501,7 +539,7 @@ void Fr2355::UpdatePins(void) {
             } else if (dir && !sel && !locked) {
                 out = 1;
                 level = (PortReg(p.port, P_OUT) & mask) != 0;
-            } else if (dir && sel && !locked && PeripheralOutput(p.port, p.bit, &level)) {
+            } else if (sel && !locked && PeripheralOutput(p.port, p.bit, dir, &level)) {
                 out = 1;
             } else if (pin_driven[i]) {
                 out = 0;
@@ -524,6 +562,10 @@ void Fr2355::UpdatePins(void) {
             for (auto& tp : TB_PINS) {
                 if (tp.port == p.port && tp.bit == p.bit && tp.sel == sel)
                     tb[tp.timer].SetCaptureInput(tp.ccr, level);
+            }
+            for (auto& up : UCB_PINS) {
+                if (up.port == p.port && up.bit == p.bit && sel == 1 && up.signal == UCB_SOMI)
+                    ucb[up.ucb].SetSomi(level);
             }
         }
     }
@@ -549,13 +591,34 @@ void Fr2355::UpdatePins(void) {
     }
 }
 
-// The level a peripheral drives onto a port pin selected for it, if any.
-int Fr2355::PeripheralOutput(int port, int bit, uint8_t* level) {
+// The level a peripheral drives onto a port pin selected for it, if any. dir is the pin's PxDIR bit, which
+// decides between a timer's output and its capture input; the eUSCI sets its pins' directions itself.
+int Fr2355::PeripheralOutput(int port, int bit, int dir, uint8_t* level) {
     int sel = ((PortReg(port, P_SEL1) >> bit) & 1) << 1 | ((PortReg(port, P_SEL0) >> bit) & 1);
-    for (auto& tp : TB_PINS) {
-        if (tp.port == port && tp.bit == bit && tp.sel == sel) {
-            *level = tb[tp.timer].Out(tp.ccr);
-            return 1;
+    if (dir) {
+        for (auto& tp : TB_PINS) {
+            if (tp.port == port && tp.bit == bit && tp.sel == sel) {
+                *level = tb[tp.timer].Out(tp.ccr);
+                return 1;
+            }
+        }
+    }
+    for (auto& up : UCB_PINS) {
+        if (up.port != port || up.bit != bit || sel != 1)
+            continue;
+        const EusciB& u = ucb[up.ucb];
+        switch (up.signal) {
+            case UCB_CLK:
+                *level = u.Clk();
+                return 1;
+            case UCB_SIMO:
+                *level = u.Simo();
+                return 1;
+            case UCB_STE:
+                if (!u.DrivesSte())
+                    return 0;
+                *level = u.Ste();
+                return 1;
         }
     }
     return 0;
@@ -841,6 +904,10 @@ int Fr2355::PendingInterrupt(void) {
     }
     if ((regs[SFRIFG1] & WDTIFG) && (regs[SFRIE1] & WDTIE))
         return VEC_WDT;
+    if (ucb[0].Pending())
+        return VEC_EUSCI_B1 + 1;
+    if (ucb[1].Pending())
+        return VEC_EUSCI_B1;
     for (int port = 1; port <= 4; port++) {
         if (PortReg(port, P_IFG) & PortReg(port, P_IE))
             return VEC_PORT1 + 1 - port;
@@ -918,6 +985,10 @@ void Fr2355::Tick(void) {
     for (int t = 0; t < 4; t++) {
         tb[t].Advance(aclk / tick_hz, smclk / tick_hz);
         outputs |= tb[t].TakeOutputChanged();
+    }
+    for (int u = 0; u < 2; u++) {
+        ucb[u].Tick(aclk / tick_hz, smclk / tick_hz);
+        outputs |= ucb[u].TakeOutputChanged();
     }
     if (outputs)
         UpdatePins();
