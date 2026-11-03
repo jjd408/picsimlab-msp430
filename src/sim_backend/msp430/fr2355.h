@@ -52,6 +52,8 @@ public:
     int GetPinIsOutput(int pin) const;
     // Level driven onto the pin from outside (a part); ignored while the chip drives it.
     void SetPinInput(int pin, int level);
+    // Stops driving the pin from outside, as when a switch to ground opens.
+    void ReleasePin(int pin);
     // Holds the chip in reset while the RST pin is low.
     void SetResetPin(int level);
 

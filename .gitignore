@@ -7,3 +7,4 @@ src/sim_backend/msp430/tests/*.elf
 src/sim_backend/msp430/tests/msp430_run
 src/sim_backend/msp430/tests/*.hex
 src/sim_backend/msp430/tests/sharp.pbm
+src/sim_backend/msp430/tests/buttons.pbm

@@ -636,6 +636,14 @@ int Fr2355::GetPinIsOutput(int pin) const {
     return pin_out[pin - 1];
 }
 
+// Stops driving a pin from outside (a released switch): its level then comes from the pull resistor, if any.
+void Fr2355::ReleasePin(int pin) {
+    if (pin < 1 || pin > PIN_COUNT || !pin_driven[pin - 1])
+        return;
+    pin_driven[pin - 1] = 0;
+    UpdatePins();
+}
+
 void Fr2355::SetPinInput(int pin, int level) {
     if (pin < 1 || pin > PIN_COUNT)
         return;

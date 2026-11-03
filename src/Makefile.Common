@@ -48,4 +48,4 @@ sim_backend/msp430/%.o: sim_backend/msp430/%.c
 # rebuild them when the headers change (this Makefile doesn't track header dependencies otherwise).
 MSP430_HEADERS = $(wildcard sim_backend/msp430/*.h) sim_backend/bsim_msp430.h
 sim_backend/bsim_msp430.o $(patsubst %.cc,%.o,$(wildcard sim_backend/msp430/*.cc)): $(MSP430_HEADERS)
-$(patsubst %.cc,%.o,$(wildcard boards/board_MSP430*.cc)): $(MSP430_HEADERS)
+$(patsubst %.cc,%.o,$(wildcard boards/board_MSP430*.cc) boards/board_Solitaire.cc): $(MSP430_HEADERS) devices/lcd_ls013b7dh05.h

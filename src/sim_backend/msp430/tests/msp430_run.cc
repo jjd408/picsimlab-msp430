@@ -5,7 +5,8 @@
  *              [--duty PIN@FROM]... [--spi CLK,DATA,CS,CPOL,CPHA,MSBFIRST]
  *              [--sharp SCLK,SI,SCS,EXTCOMIN,DISP[,image.pbm]]
  *
- * --pin drives a package pin from outside at a simulated time (seconds), as a PICSimLab part would.
+ * --pin drives a package pin from outside at a simulated time (seconds), as a PICSimLab part would; LEVEL z
+ * stops driving it (a released switch), leaving it to the pull resistor.
  * --peek prints 16-bit words of memory at the end (--peek32/--peek64: 32- or 64-bit values). --edges counts
  * level changes on a pin; --sample prints a pin's level at a time; --duty prints the fraction of time a pin
  * was high from a start time (seconds) to the end. --spi decodes the bytes on a data pin as an SPI device in
@@ -50,10 +51,12 @@ int main(int argc, char** argv) {
             tick_hz = atof(argv[++i]);
         } else if (!strcmp(argv[i], "--pin") && i + 1 < argc) {
             PinEvent e;
-            if (sscanf(argv[++i], "%d=%d@%lf", &e.pin, &e.level, &e.time) != 3) {
+            char lv[8];
+            if (sscanf(argv[++i], "%d=%7[01z]@%lf", &e.pin, lv, &e.time) != 3) {
                 fprintf(stderr, "bad --pin %s\n", argv[i]);
                 return 2;
             }
+            e.level = lv[0] == 'z' ? -1 : lv[0] - '0';
             events.push_back(e);
         } else if (!strcmp(argv[i], "--peek") && i + 1 < argc) {
             unsigned addr;
@@ -128,7 +131,10 @@ int main(int argc, char** argv) {
         double now = t / tick_hz;
         for (auto& e : events) {
             if (e.time >= 0 && now >= e.time) {
-                chip->SetPinInput(e.pin, e.level);
+                if (e.level < 0)
+                    chip->ReleasePin(e.pin);
+                else
+                    chip->SetPinInput(e.pin, e.level);
                 e.time = -1;
             }
         }

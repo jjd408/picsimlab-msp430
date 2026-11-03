@@ -22,6 +22,7 @@ build spi_m3lsb spi.c -DCFG=UCCKPL
 build sharp sharp.c
 build sharp_nosetup sharp.c -DSCS_SETUP=1
 build sharp_fast sharp.c -DSPI_DIV=4
+build buttons buttons.c
 gcc -std=c99 -O2 -c ../msp430_cpu.c -o msp430_cpu.o
 g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc ../eusci_b.cc \
     ../../../devices/lcd_ls013b7dh05.cc msp430_cpu.o
@@ -128,4 +129,16 @@ check "sharp: SCS set-up time too short is caught" "the panel needs 6 us (tsSCS)
     ./msp430_run sharp_nosetup.hex --seconds 0.5 --tick 8e6 --sharp $SHARP
 check "sharp: SCLK above 1.1 MHz is caught" "the panel takes at most 1100 kHz" \
     ./msp430_run sharp_fast.hex --seconds 0.5 --tick 8e6 --sharp $SHARP
+
+# --- Step 6: the whole handheld (the Solitaire board's wiring): buttons to ground on the schematic's pins,
+# the display, LPM3 between presses. SW1 (P3.0, pin 3) is pressed and released; stack 5 (P1.4, pin 31) and
+# suit 4 (P2.5, pin 14) are pressed and held. The firmware counts 3 presses and redraws on each of the 4
+# edges (6 frames with the clear and the first draw); the screen shows the two held buttons' boxes filled.
+BUTTONS="--pin 3=0@0.3 --pin 31=0@0.4 --pin 14=0@0.5 --pin 3=z@0.8"
+r=$(addr buttons.elf presses)
+check "buttons: presses counted" "$r: 0003" ./msp430_run buttons.hex --seconds 1.5 --tick 8e6 $BUTTONS --peek $r:1
+check "buttons: display redrawn on each edge" "sharp: 6 frames, 840 lines written" \
+    ./msp430_run buttons.hex --seconds 1.5 --tick 8e6 $BUTTONS --sharp $SHARP
+./msp430_run buttons.hex --seconds 1.5 --tick 8e6 $BUTTONS --sharp $SHARP,buttons.pbm >/dev/null
+check "buttons: screen shows the held buttons" "$(cat buttons_expected.md5)" md5sum buttons.pbm
 exit $fail
