@@ -1,0 +1,55 @@
+name: Linux flatpak
+
+on:
+  workflow_run:
+    workflows: ["Release setup"]
+    types: [completed]
+
+jobs:
+  buildLinux:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+
+    steps:
+    
+    - name: Job info
+      run: |
+        echo "GitHub Ref: ${{ github.ref }}"
+        echo "Event: ${{ github.event }}"
+    
+    - name: checkout sources
+      uses: actions/checkout@v2
+
+        #- name: Install sudo package
+        #run:  apt update && apt install sudo
+
+    - name: install_deps
+      run: bscripts/install_deps.sh      
+    
+    - name: build_all_static
+      run: bscripts/build_flatpak.sh
+
+    - uses: actions/upload-artifact@v4
+      if: github.ref == 'refs/heads/master' 
+      with:
+        name: picsimlab_pkg
+        path: release*/*
+
+    - name: Latest code build release
+      uses: softprops/action-gh-release@v1
+      if: github.ref == 'refs/heads/master' 
+      with:
+        prerelease: true
+        files: release_*/*
+        tag_name: latestbuild
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - if: (startsWith(github.ref, 'refs/tags/')) 
+      name: tagged release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release_*/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

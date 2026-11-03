@@ -1,0 +1,185 @@
+/* ########################################################################
+
+   PICSimLab - Programmable IC Simulator Laboratory
+
+   ########################################################################
+
+   Copyright (c) : 2019-2026  Luis Claudio Gambôa Lopes <lcgamboa@yahoo.com>
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+   For e-mail suggestions :  lcgamboa@yahoo.com
+   ######################################################################## */
+
+#include "other_RTC_pfc8563.h"
+#include "../lib/oscilloscope.h"
+#include "../lib/picsimlab.h"
+#include "../lib/spareparts.h"
+
+/* outputs */
+enum { O_P1, O_P2, O_P3, O_P4, O_P5, O_P6, O_P7, O_P8, O_IC };
+
+const char pin_names[8][10] = {"OSI", "OSO", "INT", "VSS", "SDA", "SCL", "CLK", "VCC"};
+const char pin_values[8][10] = {"OSC1", "OSC2", {0}, "GND", {1}, {2}, {3}, "+5V"};
+
+static PCWProp pcwprop[9] = {{PCW_LABEL, "P1 - OSI,OSC1"}, {PCW_LABEL, "P2 - OSO,OSC2"}, {PCW_COMBO, "P3 - INT"},
+                             {PCW_LABEL, "P4 - VSS,GND"},  {PCW_COMBO, "P5 - SDA"},      {PCW_COMBO, "P6 - SCL"},
+                             {PCW_COMBO, "P7 - CLK"},      {PCW_LABEL, "P8 - VCC,+5V"},  {PCW_END, ""}};
+
+cpart_RTC_pfc8563::cpart_RTC_pfc8563(const unsigned x, const unsigned y, const char* name, const char* type,
+                                     board* pboard_, const int id_)
+    : part(x, y, name, type, pboard_, id_, 8) {
+    rtc_pfc8563_init(&rtc, pboard);
+    rtc_pfc8563_rst(&rtc);
+
+    input_pins[0] = 0;
+    input_pins[1] = 0;
+    input_pins[2] = 0;
+    input_pins[3] = 0;
+
+    SetPCWProperties(pcwprop);
+
+    PinCount = 4;
+    Pins = input_pins;
+}
+
+cpart_RTC_pfc8563::~cpart_RTC_pfc8563(void) {
+    rtc_pfc8563_end(&rtc);
+
+    SpareParts.CanvasCmd({.partn = id, .cmd = CC_FREEBITMAP, .FreeBitmap{BitmapId}});
+    SpareParts.CanvasCmd({.partn = id, .cmd = CC_DESTROY});
+}
+
+void cpart_RTC_pfc8563::DrawOutput(const unsigned int i) {
+    switch (output[i].id) {
+        case O_IC:
+            SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFONTSIZE, .SetFontSize{6}});
+            SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETCOLOR, .SetColor{26, 26, 26}});
+            SpareParts.CanvasCmd(
+                {.partn = id,
+                 .cmd = CC_RECTANGLE,
+                 .Rectangle{1, output[i].x1, output[i].y1, output[i].x2 - output[i].x1, output[i].y2 - output[i].y1}});
+            SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFGCOLOR, .SetFgColor{255, 255, 255}});
+            SpareParts.CanvasCmd(
+                {.partn = id, .cmd = CC_ROTATEDTEXT, .RotatedText{"PFC8563", output[i].x1, output[i].y2 - 15, 0.0}});
+            break;
+        default:
+            SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETCOLOR, .SetColor{49, 61, 99}});
+            SpareParts.CanvasCmd(
+                {.partn = id,
+                 .cmd = CC_RECTANGLE,
+                 .Rectangle{1, output[i].x1, output[i].y1, output[i].x2 - output[i].x1, output[i].y2 - output[i].y1}});
+
+            SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFGCOLOR, .SetFgColor{255, 255, 255}});
+            SpareParts.CanvasCmd({.partn = id,
+                                  .cmd = CC_ROTATEDTEXT,
+                                  .RotatedText{pin_names[output[i].id - O_P1], output[i].x1, output[i].y2, 90.0}});
+
+            int pinv = pin_values[output[i].id - O_P1][0];
+            if (pinv > 10) {
+                SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFGCOLOR, .SetFgColor{155, 155, 155}});
+                SpareParts.CanvasCmd(
+                    {.partn = id,
+                     .cmd = CC_ROTATEDTEXT,
+                     .RotatedText{pin_values[output[i].id - O_P1], output[i].x1, output[i].y2 - 30, 90.0}});
+            } else {
+                if (input_pins[pinv] == 0)
+                    SpareParts.CanvasCmd({.partn = id,
+                                          .cmd = CC_ROTATEDTEXT,
+                                          .RotatedText{"NC", output[i].x1, output[i].y2 - 30, 90.0}});
+                else
+                    SpareParts.CanvasCmd({.partn = id,
+                                          .cmd = CC_ROTATEDTEXT,
+                                          .RotatedText{SpareParts.GetPinName(input_pins[pinv]).c_str(), output[i].x1,
+                                                       output[i].y2 - 30, 90.0}});
+            }
+            break;
+    }
+}
+
+unsigned short cpart_RTC_pfc8563::GetInputId(char* name) {
+    printf("Error input '%s' don't have a valid id! \n", name);
+    return INVALID_ID;
+};
+
+unsigned short cpart_RTC_pfc8563::GetOutputId(char* name) {
+    if (strcmp(name, "PN_1") == 0)
+        return O_P1;
+    if (strcmp(name, "PN_2") == 0)
+        return O_P2;
+    if (strcmp(name, "PN_3") == 0)
+        return O_P3;
+    if (strcmp(name, "PN_4") == 0)
+        return O_P4;
+    if (strcmp(name, "PN_5") == 0)
+        return O_P5;
+    if (strcmp(name, "PN_6") == 0)
+        return O_P6;
+    if (strcmp(name, "PN_7") == 0)
+        return O_P7;
+    if (strcmp(name, "PN_8") == 0)
+        return O_P8;
+
+    if (strcmp(name, "IC_8") == 0)
+        return O_IC;
+
+    printf("Error output '%s' don't have a valid id! \n", name);
+    return INVALID_ID;
+};
+
+std::string cpart_RTC_pfc8563::WritePreferences(void) {
+    char prefs[256];
+
+    sprintf(prefs, "%hhu,%hhu,%hhu,%hhu", input_pins[0], input_pins[1], input_pins[2], input_pins[3]);
+
+    return prefs;
+}
+
+int cpart_RTC_pfc8563::ReadPreferences(std::string value) {
+    int ret =
+        sscanf(value.c_str(), "%hhu,%hhu,%hhu,%hhu", &input_pins[0], &input_pins[1], &input_pins[2], &input_pins[3]);
+    Reset();
+    return ret;
+}
+
+void cpart_RTC_pfc8563::ConfigurePropertiesWindow(void) {
+    SetPCWComboWithPinNames("combo3", input_pins[0]);
+    SetPCWComboWithPinNames("combo5", input_pins[1]);
+    SetPCWComboWithPinNames("combo6", input_pins[2]);
+    SetPCWComboWithPinNames("combo7", input_pins[3]);
+}
+
+void cpart_RTC_pfc8563::ReadPropertiesWindow(void) {
+    input_pins[0] = GetPWCComboSelectedPin("combo3");
+    input_pins[1] = GetPWCComboSelectedPin("combo5");
+    input_pins[2] = GetPWCComboSelectedPin("combo6");
+    input_pins[3] = GetPWCComboSelectedPin("combo7");
+}
+
+void cpart_RTC_pfc8563::PreProcess(void) {
+    if (input_pins[1] > 0) {
+        SpareParts.ResetPullupBus(input_pins[1] - 1);
+    }
+}
+
+void cpart_RTC_pfc8563::Process(void) {
+    const picpin* ppins = SpareParts.GetPinsValues();
+
+    if ((input_pins[1] > 0) && (input_pins[2] > 0))
+        SpareParts.SetPullupBus(input_pins[1] - 1, rtc_pfc8563_I2C_io(&rtc, ppins[input_pins[2] - 1].value,
+                                                                      ppins[input_pins[1] - 1].value));
+}
+
+part_init(PART_RTC_PFC8563_Name, cpart_RTC_pfc8563, "Other");

@@ -1,0 +1,200 @@
+/* ########################################################################
+
+   PICSimLab - Programmable IC Simulator Laboratory
+
+   ########################################################################
+
+   Copyright (c) : 2025-2026  Luis Claudio Gambôa Lopes <lcgamboa@yahoo.com>
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+   For e-mail suggestions :  lcgamboa@yahoo.com
+   ######################################################################## */
+   
+CPWindow1::CPWindow1(void)
+{
+//lxrad automatic generated block start, don't edit below!
+  SetFOwner(this);
+  SetClass(lxT("CPWindow"));
+  SetName(lxT("window1"));
+  SetTag(0);
+  SetX(335);
+  SetY(173);
+  SetWidth(402);
+  SetHeight(498);
+  SetHint(lxT(""));
+  SetEnable(1);
+  SetVisible(1);
+  SetColor(lxT("#000001"));
+  SetPopupMenu(NULL);
+  SetTitle(lxT("espmsim"));
+  SetOverrideRedirect(0);
+  EvOnCreate=EVONCREATE & CPWindow1::_EvOnCreate;
+  EvOnDestroy=EVONDESTROY & CPWindow1::_EvOnDestroy;
+  //combo1
+  combo1.SetFOwner(this);
+  combo1.SetClass(lxT("CCombo"));
+  combo1.SetName(lxT("combo1"));
+  combo1.SetTag(0);
+  combo1.SetX(61);
+  combo1.SetY(22);
+  combo1.SetWidth(107);
+  combo1.SetHeight(26);
+  combo1.SetHint(lxT(""));
+  combo1.SetEnable(1);
+  combo1.SetVisible(1);
+  combo1.SetColor(lxT("#000001"));
+  combo1.SetPopupMenu(NULL);
+  combo1.SetItems(lxT(""));
+  combo1.SetText(lxT(""));
+  combo1.SetReadOnly(0);
+  CreateChild(&combo1);
+  //togglebutton1
+  togglebutton1.SetFOwner(this);
+  togglebutton1.SetClass(lxT("CToggleButton"));
+  togglebutton1.SetName(lxT("togglebutton1"));
+  togglebutton1.SetTag(0);
+  togglebutton1.SetX(179);
+  togglebutton1.SetY(22);
+  togglebutton1.SetWidth(86);
+  togglebutton1.SetHeight(28);
+  togglebutton1.SetHint(lxT(""));
+  togglebutton1.SetEnable(1);
+  togglebutton1.SetVisible(1);
+  togglebutton1.SetColor(lxT("#000001"));
+  togglebutton1.SetPopupMenu(NULL);
+  togglebutton1.SetText(lxT("Connect"));
+  togglebutton1.SetCheck(0);
+  togglebutton1.EvOnToggleButton=EVONTOGGLEBUTTON & CPWindow1::togglebutton1_EvOnToggleButton;
+  CreateChild(&togglebutton1);
+  //timer1
+  timer1.SetFOwner(this);
+  timer1.SetClass(lxT("CTimer"));
+  timer1.SetName(lxT("timer1"));
+  timer1.SetTag(0);
+  timer1.SetTime(100);
+  timer1.SetRunState(0);
+  timer1.EvOnTime=EVONTIME & CPWindow1::timer1_EvOnTime;
+  CreateChild(&timer1);
+  //text1
+  text1.SetFOwner(this);
+  text1.SetClass(lxT("CText"));
+  text1.SetName(lxT("text1"));
+  text1.SetTag(0);
+  text1.SetX(17);
+  text1.SetY(263);
+  text1.SetWidth(360);
+  text1.SetHeight(170);
+  text1.SetHint(lxT(""));
+  text1.SetEnable(1);
+  text1.SetVisible(1);
+  text1.SetColor(lxT("#000001"));
+  text1.SetPopupMenu(NULL);
+  text1.SetReadOnly(1);
+  CreateChild(&text1);
+  //timer2
+  timer2.SetFOwner(this);
+  timer2.SetClass(lxT("CTimer"));
+  timer2.SetName(lxT("timer2"));
+  timer2.SetTag(0);
+  timer2.SetTime(500);
+  timer2.SetRunState(1);
+  timer2.EvOnTime=EVONTIME & CPWindow1::timer2_EvOnTime;
+  CreateChild(&timer2);
+  //text2
+  text2.SetFOwner(this);
+  text2.SetClass(lxT("CText"));
+  text2.SetName(lxT("text2"));
+  text2.SetTag(0);
+  text2.SetX(17);
+  text2.SetY(73);
+  text2.SetWidth(361);
+  text2.SetHeight(170);
+  text2.SetHint(lxT(""));
+  text2.SetEnable(1);
+  text2.SetVisible(1);
+  text2.SetColor(lxT("#000001"));
+  text2.SetPopupMenu(NULL);
+  text2.SetReadOnly(1);
+  CreateChild(&text2);
+  //menu1
+  menu1.SetFOwner(this);
+  menu1.SetClass(lxT("CMenu"));
+  menu1.SetName(lxT("menu1"));
+  menu1.SetTag(0);
+  menu1.SetMenuItems(lxT("File,Help,"));
+  CreateChild(&menu1);
+  //menu1_File
+  menu1_File.SetFOwner(this);
+  menu1_File.SetClass(lxT("CPMenu"));
+  menu1_File.SetName(lxT("menu1_File"));
+  menu1_File.SetTag(0);
+  menu1_File.SetText(lxT("File"));
+  menu1_File.SetMenuItems(lxT("Exit,"));
+  menu1.CreateChild(&menu1_File);
+  //menu1_Help
+  menu1_Help.SetFOwner(this);
+  menu1_Help.SetClass(lxT("CPMenu"));
+  menu1_Help.SetName(lxT("menu1_Help"));
+  menu1_Help.SetTag(0);
+  menu1_Help.SetText(lxT("Help"));
+  menu1_Help.SetMenuItems(lxT("Contents,About,"));
+  menu1.CreateChild(&menu1_Help);
+  //menu1_File_Exit
+  menu1_File_Exit.SetFOwner(this);
+  menu1_File_Exit.SetClass(lxT("CItemMenu"));
+  menu1_File_Exit.SetName(lxT("menu1_File_Exit"));
+  menu1_File_Exit.SetTag(0);
+  menu1_File_Exit.SetText(lxT("Exit"));
+  menu1_File_Exit.SetEnable(1);
+  menu1_File_Exit.SetSubMenu(NULL);
+  menu1_File_Exit.EvMenuActive=EVMENUACTIVE & CPWindow1::menu1_File_Exit_EvMenuActive;
+  menu1_File.CreateChild(&menu1_File_Exit);
+  //menu1_Help_Contents
+  menu1_Help_Contents.SetFOwner(this);
+  menu1_Help_Contents.SetClass(lxT("CItemMenu"));
+  menu1_Help_Contents.SetName(lxT("menu1_Help_Contents"));
+  menu1_Help_Contents.SetTag(0);
+  menu1_Help_Contents.SetText(lxT("Contents"));
+  menu1_Help_Contents.SetEnable(1);
+  menu1_Help_Contents.SetSubMenu(NULL);
+  menu1_Help_Contents.EvMenuActive=EVMENUACTIVE & CPWindow1::menu1_Help_Contents_EvMenuActive;
+  menu1_Help.CreateChild(&menu1_Help_Contents);
+  //menu1_Help_About
+  menu1_Help_About.SetFOwner(this);
+  menu1_Help_About.SetClass(lxT("CItemMenu"));
+  menu1_Help_About.SetName(lxT("menu1_Help_About"));
+  menu1_Help_About.SetTag(0);
+  menu1_Help_About.SetText(lxT("About"));
+  menu1_Help_About.SetEnable(1);
+  menu1_Help_About.SetSubMenu(NULL);
+  menu1_Help_About.EvMenuActive=EVMENUACTIVE & CPWindow1::menu1_Help_About_EvMenuActive;
+  menu1_Help.CreateChild(&menu1_Help_About);
+  /*#Others*/
+//lxrad automatic generated block end, don't edit above!
+  CWMODE=3;
+  CIPMUX=0;
+  CIPMODE=0;
+  WCON=0;
+  CIPSERVER=0;
+  PORT=0;
+  SKL=-1;
+  SRVN=0;
+  SCLI[0]=-1;
+  SCLI[1]=-1;
+  SCLI[2]=-1;
+  SCLI[3]=-1;
+  
+};

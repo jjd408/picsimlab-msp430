@@ -1,0 +1,14 @@
+
+Dependencies:
+
+lib lxrad: https://github.com/lcgamboa/lxrad or http://sourceforge.net/projects/lxrad/
+lib picsim: https://github.com/lcgamboa/picsim or http://sourceforge.net/projects/picsim/
+
+Installation:
+
+make           - Compile the picsimlab simulator
+
+make install   - Install picsimlab in system 
+
+make uninstall - Remove picsimlab 
+

@@ -1,0 +1,487 @@
+<window1>
+  <Class type="String">CPWindow</Class>
+  <Name type="String">window1</Name>
+  <Tag type="int">0</Tag>
+  <X type="int">256</X>
+  <Y type="int">141</Y>
+  <Width type="uint">1110</Width>
+  <Height type="uint">505</Height>
+  <Hint type="String"></Hint>
+  <Enable type="bool">1</Enable>
+  <Visible type="bool">1</Visible>
+  <Color type="String">#000001</Color>
+  <PopupMenu type="PopupMenu">NULL</PopupMenu>
+  <EvMouseMove type="Event">FALSE</EvMouseMove>
+  <EvMouseButtonPress type="Event">FALSE</EvMouseButtonPress>
+  <EvMouseButtonRelease type="Event">FALSE</EvMouseButtonRelease>
+  <EvMouseButtonClick type="Event">FALSE</EvMouseButtonClick>
+  <EvMouseButtonDoubleClick type="Event">FALSE</EvMouseButtonDoubleClick>
+  <EvKeyboardPress type="Event">FALSE</EvKeyboardPress>
+  <EvKeyboardRelease type="Event">FALSE</EvKeyboardRelease>
+  <EvKeyboardKey type="Event">FALSE</EvKeyboardKey>
+  <EvOnDraw type="Event">FALSE</EvOnDraw>
+  <EvOnFocusIn type="Event">FALSE</EvOnFocusIn>
+  <EvOnFocusOut type="Event">FALSE</EvOnFocusOut>
+  <Title type="String">Picsimlab</Title>
+  <OverrideRedirect type="bool">0</OverrideRedirect>
+  <EvOnCreate type="Event">TRUE</EvOnCreate>
+  <EvOnDestroy type="Event">TRUE</EvOnDestroy>
+  <EvOnShow type="Event">TRUE</EvOnShow>
+  <EvOnHide type="Event">FALSE</EvOnHide>
+  <EvOnEnter type="Event">FALSE</EvOnEnter>
+  <EvOnLeave type="Event">FALSE</EvOnLeave>
+<timer1>
+  <Class type="String">CTimer</Class>
+  <Name type="String">timer1</Name>
+  <Tag type="int">0</Tag>
+  <Time type="int">100</Time>
+  <RunState type="int">0</RunState>
+  <EvOnTime type="Event">TRUE</EvOnTime>
+</timer1>
+<timer2>
+  <Class type="String">CTimer</Class>
+  <Name type="String">timer2</Name>
+  <Tag type="int">0</Tag>
+  <Time type="int">1000</Time>
+  <RunState type="int">0</RunState>
+  <EvOnTime type="Event">TRUE</EvOnTime>
+</timer2>
+<filedialog1>
+  <Class type="String">CFileDialog</Class>
+  <Name type="String">filedialog1</Name>
+  <Tag type="int">0</Tag>
+  <FileName type="String">untitled.hex</FileName>
+  <Filter type="String">Hex Files (*.hex)|*.hex;*.HEX</Filter>
+  <Type type="int">129</Type>
+  <EvOnClose type="Event">TRUE</EvOnClose>
+</filedialog1>
+<draw1>
+  <Class type="String">CDraw</Class>
+  <Name type="String">draw1</Name>
+  <Tag type="int">0</Tag>
+  <X type="int">170</X>
+  <Y type="int">5</Y>
+  <Width type="uint">932</Width>
+  <Height type="uint">467</Height>
+  <Hint type="String"></Hint>
+  <Enable type="bool">1</Enable>
+  <Visible type="bool">1</Visible>
+  <Color type="String">#000001</Color>
+  <PopupMenu type="PopupMenu">NULL</PopupMenu>
+  <EvMouseMove type="Event">TRUE</EvMouseMove>
+  <EvMouseButtonPress type="Event">TRUE</EvMouseButtonPress>
+  <EvMouseButtonRelease type="Event">TRUE</EvMouseButtonRelease>
+  <EvMouseButtonClick type="Event">FALSE</EvMouseButtonClick>
+  <EvMouseButtonDoubleClick type="Event">FALSE</EvMouseButtonDoubleClick>
+  <EvKeyboardPress type="Event">TRUE</EvKeyboardPress>
+  <EvKeyboardRelease type="Event">TRUE</EvKeyboardRelease>
+  <EvKeyboardKey type="Event">FALSE</EvKeyboardKey>
+  <EvOnDraw type="Event">FALSE</EvOnDraw>
+  <EvOnFocusIn type="Event">FALSE</EvOnFocusIn>
+  <EvOnFocusOut type="Event">FALSE</EvOnFocusOut>
+  <Transparent type="bool">0</Transparent>
+  <ImgFileName type="File"></ImgFileName>
+</draw1>
+<combo1>
+  <Class type="lxString">CCombo</Class>
+  <Name type="lxString">combo1</Name>
+  <Tag type="int">0</Tag>
+  <X type="int">84</X>
+  <Y type="int">6</Y>
+  <Width type="uint">83</Width>
+  <Height type="uint">25</Height>
+  <Hint type="lxString"></Hint>
+  <Enable type="bool">1</Enable>
+  <Visible type="bool">1</Visible>
+  <Color type="lxString">#000001</Color>
+  <PopupMenu type="PopupMenu">NULL</PopupMenu>
+  <EvMouseMove type="Event">FALSE</EvMouseMove>
+  <EvMouseButtonPress type="Event">FALSE</EvMouseButtonPress>
+  <EvMouseButtonRelease type="Event">FALSE</EvMouseButtonRelease>
+  <EvMouseButtonClick type="Event">FALSE</EvMouseButtonClick>
+  <EvMouseButtonDoubleClick type="Event">FALSE</EvMouseButtonDoubleClick>
+  <EvKeyboardPress type="Event">FALSE</EvKeyboardPress>
+  <EvKeyboardRelease type="Event">FALSE</EvKeyboardRelease>
+  <EvOnDraw type="Event">FALSE</EvOnDraw>
+  <EvOnFocusIn type="Event">FALSE</EvOnFocusIn>
+  <EvOnFocusOut type="Event">FALSE</EvOnFocusOut>
+  <Items type="lxStringList">64,48,40,32,20,16,10,8,4,2,1,</Items>
+  <Text type="lxString">64</Text>
+  <ReadOnly type="bool">0</ReadOnly>
+  <EvOnComboChange type="Event">TRUE</EvOnComboChange>
+</combo1>
+<label1>
+  <Class type="lxString">CLabel</Class>
+  <Name type="lxString">label1</Name>
+  <Tag type="int">0</Tag>
+  <X type="int">6</X>
+  <Y type="int">10</Y>
+  <Width type="uint">73</Width>
+  <Height type="uint">21</Height>
+  <Hint type="lxString"></Hint>
+  <Enable type="bool">1</Enable>
+  <Visible type="bool">1</Visible>
+  <Color type="lxString">#000001</Color>
+  <PopupMenu type="PopupMenu">NULL</PopupMenu>
+  <EvMouseMove type="Event">FALSE</EvMouseMove>
+  <EvMouseButtonPress type="Event">FALSE</EvMouseButtonPress>
+  <EvMouseButtonRelease type="Event">FALSE</EvMouseButtonRelease>
+  <EvMouseButtonClick type="Event">FALSE</EvMouseButtonClick>
+  <EvMouseButtonDoubleClick type="Event">FALSE</EvMouseButtonDoubleClick>
+  <EvKeyboardPress type="Event">FALSE</EvKeyboardPress>
+  <EvKeyboardRelease type="Event">FALSE</EvKeyboardRelease>
+  <EvOnDraw type="Event">FALSE</EvOnDraw>
+  <EvOnFocusIn type="Event">FALSE</EvOnFocusIn>
+  <EvOnFocusOut type="Event">FALSE</EvOnFocusOut>
+  <Text type="lxString">Clk(MHz)</Text>
+  <Align type="CAlign">1</Align>
+</label1>
+<label2>
+  <Class type="lxString">CLabel</Class>
+  <Name type="lxString">label2</Name>
+  <Tag type="int">0</Tag>
+  <X type="int">6</X>
+  <Y type="int">38</Y>
+  <Width type="uint">76</Width>
+  <Height type="uint">21</Height>
+  <Hint type="lxString"></Hint>
+  <Enable type="bool">1</Enable>
+  <Visible type="bool">1</Visible>
+  <Color type="lxString">#000001</Color>
+  <PopupMenu type="PopupMenu">NULL</PopupMenu>
+  <EvMouseMove type="Event">FALSE</EvMouseMove>
+  <EvMouseButtonPress type="Event">FALSE</EvMouseButtonPress>
+  <EvMouseButtonRelease type="Event">FALSE</EvMouseButtonRelease>
+  <EvMouseButtonClick type="Event">FALSE</EvMouseButtonClick>
+  <EvMouseButtonDoubleClick type="Event">FALSE</EvMouseButtonDoubleClick>
+  <EvKeyboardPress type="Event">FALSE</EvKeyboardPress>
+  <EvKeyboardRelease type="Event">FALSE</EvKeyboardRelease>
+  <EvOnDraw type="Event">FALSE</EvOnDraw>
+  <EvOnFocusIn type="Event">FALSE</EvOnFocusIn>
+  <EvOnFocusOut type="Event">FALSE</EvOnFocusOut>
+  <Text type="lxString">Spd: 1.00x</Text>
+  <Align type="CAlign">1</Align>
+</label2>
+<menu1>
+  <Class type="String">CMenu</Class>
+  <Name type="String">menu1</Name>
+  <Tag type="int">0</Tag>
+  <MenuItems type="MenuItems">File,Board,Microcontroller,Modules,Tools,Code,Help,</MenuItems>
+</menu1>
+<menu1_File>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_File</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">File</Text>
+  <MenuItems type="MenuItems">Load Hex,Reload Last,Save Hex,Configure,Save Workspace,Load Workspace,Load Board Demo,Exit,</MenuItems>
+</menu1_File>
+<menu1_Board>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_Board</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Board</Text>
+  <MenuItems type="MenuItems"></MenuItems>
+</menu1_Board>
+<menu1_Microcontroller>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_Microcontroller</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Microcontroller</Text>
+  <MenuItems type="MenuItems"></MenuItems>
+</menu1_Microcontroller>
+<menu1_Modules>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_Modules</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Modules</Text>
+  <MenuItems type="MenuItems">Oscilloscope,Spare parts,</MenuItems>
+</menu1_Modules>
+<menu1_Tools>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_Tools</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Tools</Text>
+  <MenuItems type="MenuItems">Serial Term,Serial Remote Tank,Esp8266 Modem Simulator,Arduino Bootloader,MPLABX Debugger Plugin,Pin Viewer,</MenuItems>
+</menu1_Tools>
+<menu1_Code>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_Code</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Code</Text>
+  <MenuItems type="MenuItems">Project Wizard,Open Active Project,Open Active Project Dir</MenuItems>
+</menu1_Code>
+<menu1_Help>
+  <Class type="String">CPMenu</Class>
+  <Name type="String">menu1_Help</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Help</Text>
+  <MenuItems type="MenuItems">Contents,Board,Examples,About Board,About PICSimLab,Check for Updates,</MenuItems>
+</menu1_Help>
+<menu1_File_LoadHex>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_LoadHex</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Load Hex</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_LoadHex>
+<menu1_File_ReloadLast>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_ReloadLast</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Reload Last</Text>
+  <Enable type="bool">0</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_ReloadLast>
+<menu1_File_SaveHex>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_SaveHex</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Save Hex</Text>
+  <Enable type="bool">0</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_SaveHex>
+<menu1_File_Configure>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_Configure</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Configure</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_Configure>
+<menu1_File_SaveWorkspace>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_SaveWorkspace</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Save Workspace</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_SaveWorkspace>
+<menu1_File_LoadWorkspace>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_LoadWorkspace</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Load Workspace</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_LoadWorkspace>
+<menu1_File_LoadBoardDemo>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_LoadBoardDemo</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Load Board Demo</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_LoadBoardDemo>
+<menu1_File_Exit>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_File_Exit</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Exit</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_File_Exit>
+<menu1_Modules_Oscilloscope>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Modules_Oscilloscope</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Oscilloscope</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Modules_Oscilloscope>
+<menu1_Modules_Spareparts>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Modules_Spareparts</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Spare parts</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Modules_Spareparts>
+<menu1_Tools_SerialTerm>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Tools_SerialTerm</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Serial Terminal</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Tools_SerialTerm>
+<menu1_Tools_SerialRemoteTank>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Tools_SerialRemoteTank</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Serial Remote Tank</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Tools_SerialRemoteTank>
+<menu1_Tools_Esp8266ModemSimulator>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Tools_Esp8266ModemSimulator</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Esp8266 Modem Simulator</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Tools_Esp8266ModemSimulator>
+<menu1_Tools_ArduinoBootloader>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Tools_ArduinoBootloader</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Arduino Bootloader</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Tools_ArduinoBootloader>
+<menu1_Tools_MPLABXDebuggerPlugin>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Tools_MPLABXDebuggerPlugin</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">MPLABX Debugger Plugin</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Tools_MPLABXDebuggerPlugin>
+<menu1_Tools_PinViewer>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Tools_PinViewer</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Pin Viewer</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Tools_PinViewer>
+<menu1_Code_Project_Wizard>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Code_Project_Wizard</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Project Wizard</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Code_Project_Wizard>
+<menu1_Code_Open_Active_Project>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Code_Open_Active_Project</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Open Active Project</Text>
+  <Enable type="bool">0</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Code_Open_Active_Project>
+<menu1_Code_Open_Active_Project_Dir>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Code_Open_Active_Project_Dir</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Open Active Project Dir</Text>
+  <Enable type="bool">0</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Code_Open_Active_Project_Dir>
+<menu1_Help_Contents>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Help_Contents</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Contents</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Help_Contents>
+<menu1_Help_Board>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Help_Board</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Board</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Help_Board>
+<menu1_Help_Examples>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Help_Examples</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Examples</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Help_Examples>
+<menu1_Help_About_Board>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Help_About_Board</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">About Board</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Help_About_Board>
+<menu1_Help_About_PICSimLab>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Help_About_PICSimLab</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">About PICSimLab</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Help_About_PICSimLab>
+<menu1_Help_Check_for_Update>
+  <Class type="String">CItemMenu</Class>
+  <Name type="String">menu1_Help_Check_for_Update</Name>
+  <Tag type="int">0</Tag>
+  <Text type="String">Check for Update</Text>
+  <Enable type="bool">1</Enable>
+  <SubMenu type="SubMenu">NULL</SubMenu>
+  <EvMenuActive type="Event">TRUE</EvMenuActive>
+</menu1_Help_Check_for_Update>
+<statusbar1>
+  <Class type="String">CStatusbar</Class>
+  <Name type="String">statusbar1</Name>
+  <Tag type="int">0</Tag>
+  <Fields type="StringList">port,stats,serial,</Fields>
+</statusbar1>
+<togglebutton1>
+  <Class type="lxString">CToggleButton</Class>
+  <Name type="lxString">togglebutton1</Name>
+  <Tag type="int">0</Tag>
+  <X type="int">84</X>
+  <Y type="int">34</Y>
+  <Width type="uint">83</Width>
+  <Height type="uint">27</Height>
+  <Hint type="lxString"></Hint>
+  <Enable type="bool">1</Enable>
+  <Visible type="bool">1</Visible>
+  <Color type="lxString">#000001</Color>
+  <PopupMenu type="PopupMenu">NULL</PopupMenu>
+  <EvMouseMove type="Event">FALSE</EvMouseMove>
+  <EvMouseButtonPress type="Event">FALSE</EvMouseButtonPress>
+  <EvMouseButtonRelease type="Event">FALSE</EvMouseButtonRelease>
+  <EvMouseButtonClick type="Event">FALSE</EvMouseButtonClick>
+  <EvMouseButtonDoubleClick type="Event">FALSE</EvMouseButtonDoubleClick>
+  <EvKeyboardPress type="Event">FALSE</EvKeyboardPress>
+  <EvKeyboardRelease type="Event">FALSE</EvKeyboardRelease>
+  <EvOnDraw type="Event">FALSE</EvOnDraw>
+  <EvOnFocusIn type="Event">FALSE</EvOnFocusIn>
+  <EvOnFocusOut type="Event">FALSE</EvOnFocusOut>
+  <Text type="lxString">Debug</Text>
+  <Check type="Int">0</Check>
+  <EvOnToggleButton type="Event">TRUE</EvOnToggleButton>
+</togglebutton1>
+<filedialog2>
+  <Class type="String">CFileDialog</Class>
+  <Name type="String">filedialog2</Name>
+  <Tag type="int">0</Tag>
+  <FileName type="String">untitled.pzw</FileName>
+  <Filter type="String">PICSimLab Workspace (*.pzw)|*.pzw</Filter>
+  <Type type="int">129</Type>
+  <EvOnClose type="Event">TRUE</EvOnClose>
+</filedialog2>
+</window1>

@@ -1,0 +1,83 @@
+include Makefile.Common
+
+CXX = ccache em++
+
+prefix=/usr
+
+RM= rm -f
+CP= cp
+MKDIR = mkdir -p
+
+appdir= ${prefix}/share/applications/
+sharedir= ${prefix}/share/picsimlab/
+execdir= ${prefix}/bin/
+
+#lxrad automatic generated block start, don't edit below!
+
+#-Werror
+override CXXFLAGS+= -D_ARCH_=\"Javascript_MT\" -D_DATE_=\"${DATE}\"
+override CXXFLAGS+= -s USE_PTHREADS=1
+override CXXFLAGS+=  -DEXT_BROWSER -DNO_DEBUG -DNO_TOOLS  -O2 \
+        -s USE_SDL=2 -s USE_SDL_IMAGE=2 -s USE_SDL_GFX=2\
+	-s SDL2_IMAGE_FORMATS='["png","bmp"]' -s USE_SDL_TTF=2 \
+	-D_VERSION_=\"${VERSION}\" -Wall -D_SHARE_=\"/assets/share/\" -I../../LXRAD_SDL2/include/ \
+	-D_LIB_=\"../lib/picsimlab/\" \
+	-I../../picsim/include/ -I../../ucsim-0.6/picsimlab/ \
+	-I../../simavr/simavr/ -DEXT_BROWSER_EXAMPLES \
+	-I../teste/glib_js/target/include  -I../teste/glib_js/target/include/glib-2.0 \
+	-I../teste/glib_js/target/lib/glib-2.0/include # --preload-file home 
+
+#	-s "BINARYEN_TRAP_MODE='clamp'" 
+
+LINK= -s DEMANGLE_SUPPORT=0 -s SAFE_HEAP=0 -s ASSERTIONS=0 -s TOTAL_MEMORY=128MB  -s WASM=1  -s PTHREAD_POOL_SIZE=1 \
+      -s EXPORTED_FUNCTIONS='["_main","_file_ready","_lxrad_scale_up","_lxrad_scale_down","_dirt_load","_SimRun","_SimStat"]' \
+      -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'  --pre-js load.js --preload-file assets 
+
+#-s PROXY_TO_PTHREAD
+#CXXFLAGS+=--emrun
+#CXXFLAGS+= -D_NOTHREAD 
+
+LIBS= ../../LXRAD_SDL2/lib/liblxrad_SDL2_js_mt.a ../../picsim/src/libpicsim_js_mt.a ../../simavr/simavr/obj-wasm32-unknown-emscripten_mt/libsimavr.a
+LIBS+= ../../LXRAD_SDL2/teste/zlib-master/contrib/minizip/minizip_mt.a
+LIBS+= ../teste/glib_js/target_mt/lib/libgpsim.a
+LIBS+= ../teste/glib_js/target_mt/lib/libglib-2.0.a
+LIBS+= ../../lunasvg/buildjsmt/liblunasvg.a
+LIBS+= ../../ucsim-0.6/picsimlab/libucsim.ajs
+
+#LIBS = `lxrad_SDL2-config --libs` -lpicsim -lsimavr -lelf
+
+#lxrad automatic generated block end, don't edit above!
+
+all: $(OBJS)
+	@echo "Linking picsimlab"
+	@$(CXX) $(CXXFLAGS) $(OBJS) -o picsimlab_mt.html $(LIBS) $(LINK) --shell-file template.html 
+
+%.o: %.cc
+	@echo "Compiling $<"
+	@$(CXX) -c $(CXXFLAGS) $< -o $@ 
+
+install: all
+	${MKDIR} ${sharedir}
+	$(CP) -dvf  ../share/picsimlab.desktop ${appdir} 
+	$(CP) -drvf ../share/* ${sharedir} 
+	$(CP) -drvf ../docs ${sharedir} 
+	$(CP) -dvf picsimlab ${execdir}
+	xdg-icon-resource install --context mimetypes --size 48 ../share/application-x-picsimlab-workspace.png application-x-picsimlab-workspace
+	xdg-mime install --mode system ../share/application-x-picsimlab-workspace.xml
+	xdg-mime default picsimlab.desktop application/x-picsimlab-workspace
+	update-mime-database /usr/share/mime &
+	update-desktop-database ${appdir} &
+
+uninstall:
+	$(RM) -drvf ${sharedir} 
+	$(RM) -dvf ${execdir}picsimlab
+	$(RM) -dvf ${appdir}picsimlab.desktop
+	xdg-icon-resource uninstall  --context mimetypes --size 48 application-x-picsimlab-workspace
+	xdg-mime uninstall  --mode system ../share/application-x-picsimlab-workspace.xml
+
+run: all
+	./picsimlab
+
+clean:
+	$(RM) *.o core */*.o picsimlab_mt.html picsimlab_mt.js *.wasm *.map *.pre *.data *.wast *.mem\
+	       	 picsimlab_mt.worker.js

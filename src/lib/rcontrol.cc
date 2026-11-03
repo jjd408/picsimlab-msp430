@@ -1,0 +1,1560 @@
+/* ########################################################################
+
+   PICSimLab - Programmable IC Simulator Laboratory
+
+   ########################################################################
+
+   Copyright (c) : 2020-2026  Luis Claudio Gambôa Lopes <lcgamboa@yahoo.com>
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+   For e-mail suggestions :  lcgamboa@yahoo.com
+   ######################################################################## */
+
+#define _USE_MATH_DEFINES
+
+#define dprint \
+    if (1) {   \
+    } else     \
+        printf
+
+#ifndef _POSIX_SOURCE
+#define _POSIX_SOURCE
+#endif
+// system headers dependent
+#ifndef _WIN_
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/unistd.h>
+#define closesocket(X) close(X)
+#else
+#include <winsock2.h>
+#ifndef MSG_WAITALL
+#define MSG_WAITALL (1 << 3)
+#endif
+#define MSG_NOSIGNAL 0
+#endif
+// system headers independent
+#include <errno.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "../devices/lcd_hd44780.h"
+#include "../devices/ldd_max72xx.h"
+#include "../devices/vterm.h"
+#include "oscilloscope.h"
+#include "picsimlab.h"
+#include "rcontrol.h"
+#include "spareparts.h"
+
+#include "../picsimlab6.h"  //TODO move to prjwizard in lib
+
+#define MAX_CLIENTS 4
+#define BSIZE 1024
+
+static int listenfd = -1;
+static int server_started = 0;
+
+static char file_to_load[BSIZE];
+
+typedef struct {
+    int sockfd;
+    int waiting_exit;
+    char buffer[BSIZE];
+    int bp;
+} client_t;
+
+static client_t clients[MAX_CLIENTS];
+
+void setnblock(int sock_descriptor) {
+#ifndef _WIN_
+    int flags;
+    /* Set socket to non-blocking */
+
+    if ((flags = fcntl(sock_descriptor, F_GETFL, 0)) < 0) {
+        /* Handle error */
+        // printf("Error fcntl nblock !!!!!!!\n");
+    }
+
+    if (fcntl(sock_descriptor, F_SETFL, flags | O_NONBLOCK) < 0) {
+        /* Handle error */
+        // printf("Error fcntl nblock !!!!!!!\n");
+    }
+#else
+    unsigned long iMode = 1;
+    ioctlsocket(sock_descriptor, FIONBIO, &iMode);
+#endif
+}
+
+void setblock(int sock_descriptor) {
+#ifndef _WIN_
+    int flags;
+    /* Set socket to blocking */
+
+    if ((flags = fcntl(sock_descriptor, F_GETFL, 0)) < 0) {
+        /* Handle error */
+        // printf("Error fcntl block !!!!!!!\n");
+    }
+
+    if (fcntl(sock_descriptor, F_SETFL, flags & (~O_NONBLOCK)) < 0) {
+        /* Handle error */
+        // printf("Error fcntl block !!!!!!!\n");
+    }
+#else
+    unsigned long iMode = 0;
+    ioctlsocket(sock_descriptor, FIONBIO, &iMode);
+#endif
+}
+
+char* rcontrol_get_file_to_load(void) {
+    return file_to_load;
+}
+
+int rcontrol_init(const unsigned short tcpport, const int reporterror) {
+    struct sockaddr_in serv;
+
+    if (!server_started) {
+        dprint("rcontrol: init\n");
+
+        if ((listenfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+            printf("rcontrol: socket error : %s \n", strerror(errno));
+            return 1;
+        };
+        int reuse = 1;
+#ifdef _WIN_
+        if (setsockopt(listenfd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&reuse, sizeof(reuse)) < 0)
+            perror("rcontrol: setsockopt(SO_EXCLUSIVEADDRUSE) failed");
+#else
+        if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+            perror("rcontrol: setsockopt(SO_REUSEADDR) failed");
+#endif
+        memset(&serv, 0, sizeof(serv));
+        serv.sin_family = AF_INET;
+        serv.sin_addr.s_addr = htonl(INADDR_ANY);
+        serv.sin_port = htons(tcpport);
+
+        if (bind(listenfd, (sockaddr*)&serv, sizeof(serv))) {
+            if (reporterror) {
+                printf("rcontrol: bind error : %s \n", strerror(errno));
+                char stemp[100];
+                snprintf(stemp, 100,
+                         "Can't open rcontrol TCP port %i\n It is already "
+                         "in use by another application!",
+                         tcpport);
+                PICSimLab.RegisterError("PICSimLab", stemp);
+            }
+            return 1;
+        }
+
+        if (listen(listenfd, SOMAXCONN)) {
+            printf("rcontrol: listen error : %s \n", strerror(errno));
+            return 1;
+        }
+        setnblock(listenfd);
+        server_started = 1;
+
+        for (int client_id = 0; client_id < MAX_CLIENTS; client_id++) {
+            clients[client_id].sockfd = -1;
+            clients[client_id].waiting_exit = 0;
+            clients[client_id].bp = 0;
+        }
+    }
+    return 0;
+}
+
+static int sendtext(const int client_id, const char* str) {
+    int size = strlen(str);
+
+    if (send(clients[client_id].sockfd, str, size, MSG_NOSIGNAL) != size) {
+        printf("rcontrol: send error : %s \n", strerror(errno));
+        return 1;
+    }
+
+    return 0;
+}
+
+static int rcontrol_start(const int client_id) {
+    struct sockaddr_in cli;
+#ifndef _WIN_
+    unsigned int clilen;
+#else
+    int clilen;
+#endif
+    clilen = sizeof(cli);
+
+    if (!server_started) {
+        return 1;
+    }
+
+    if ((clients[client_id].sockfd = accept(listenfd, (sockaddr*)&cli, &clilen)) < 0) {
+        return 1;
+    }
+
+    setnblock(clients[client_id].sockfd);
+    dprint("rcontrol: Client connected [%i]!---------------------------------\n", client_id);
+
+    memset(clients[client_id].buffer, 0, BSIZE);
+    clients[client_id].bp = 0;
+
+    return sendtext(client_id,
+                    "\r\nPICSimLab Remote Control Interface\r\n\r\n  Type help "
+                    "to see supported commands\r\n\r\n>");
+}
+
+void rcontrol_stop(const int client_id) {
+    if (!clients[client_id].waiting_exit) {
+        dprint("rcontrol: Client disconnected [%i]!---------------------------------\n", client_id);
+        if (clients[client_id].sockfd >= 0) {
+            shutdown(clients[client_id].sockfd, SHUT_RDWR);
+            closesocket(clients[client_id].sockfd);
+        }
+        clients[client_id].sockfd = -1;
+    }
+}
+
+void rcontrol_end(void) {
+    for (int client_id = 0; client_id < MAX_CLIENTS; client_id++) {
+        rcontrol_stop(client_id);
+    }
+    dprint("rcontrol: end\n");
+}
+
+void rcontrol_server_end(void) {
+    if (server_started) {
+        for (int client_id = 0; client_id < MAX_CLIENTS; client_id++) {
+            if (clients[client_id].waiting_exit) {
+                sendtext(client_id, "Ok\r\n>");
+                clients[client_id].waiting_exit = 0;
+                rcontrol_stop(client_id);
+            }
+        }
+        server_started = 0;
+        dprint("rcontrol: server end\n");
+        shutdown(listenfd, SHUT_RDWR);
+        closesocket(listenfd);
+        listenfd = -1;
+    }
+}
+
+static char decodess(unsigned char v) {
+    switch (v & 0x7F) {
+        case 0x00:
+            return '_';
+            break;
+        case 0x3F:
+            return '0';
+        case 0x06:
+            return '1';
+        case 0x5B:
+            return '2';
+        case 0x4F:
+            return '3';
+        case 0x66:
+            return '4';
+        case 0x6D:
+            return '5';
+        case 0x7D:
+            return '6';
+        case 0x07:
+            return '7';
+        case 0x7F:
+            return '8';
+        case 0x6F:
+            return '9';
+        case 0x77:
+            return 'A';
+        case 0x7C:
+            return 'B';
+        case 0x58:
+        case 0x39:
+            return 'C';
+        case 0x5E:
+            return 'D';
+        case 0x79:
+            return 'E';
+        case 0x71:
+            return 'F';
+        default:
+            return 'i';
+    }
+}
+#define VTBUFFMAX SBUFFMAX
+static int Vtcount_in = 0;
+unsigned char Vtbuff_in[VTBUFFMAX + 1];
+
+void VtReceiveCallback(unsigned char data) {
+    if (Vtcount_in < (VTBUFFMAX - 1)) {
+        Vtbuff_in[Vtcount_in] = data;
+        Vtcount_in++;
+        Vtbuff_in[Vtcount_in] = 0;
+    }
+}
+
+static int type_is_equal(const char* name, const char* type) {
+    return ((name[0] == type[0]) && (name[1] == type[1]));
+}
+
+static void ProcessInput(const int client_id, const char* msg, input_t* Input, int* ret) {
+    char lstemp[200];
+    if (type_is_equal(Input->name, "VS")) {
+        short temp = ((*((unsigned char*)Input->status)) << 8) | (*(((unsigned char*)(Input->status)) - 1));
+        snprintf(lstemp, 199, "%s %s= %i\r\n", msg, Input->name, temp);
+        *ret += sendtext(client_id, lstemp);
+    } else if (type_is_equal(Input->name, "PB") || type_is_equal(Input->name, "KB") ||
+               type_is_equal(Input->name, "PO") || type_is_equal(Input->name, "JP")) {
+        snprintf(lstemp, 199, "%s %s= %i\r\n", msg, Input->name, *((unsigned char*)Input->status));
+        *ret += sendtext(client_id, lstemp);
+    } else if (type_is_equal(Input->name, "VT")) {
+        vterm_t* vt = (vterm_t*)Input->status;
+        if (!vt->ReceiveCallback) {
+            vt->ReceiveCallback = VtReceiveCallback;
+        }
+        snprintf(lstemp, 199, "%s %s= %3i\r\n", msg, Input->name, vt->count_in);
+        *ret += sendtext(client_id, lstemp);
+    } else {
+        snprintf(lstemp, 199, "%s %s= Unknow type!\r\n", msg, Input->name);
+        *ret += sendtext(client_id, lstemp);
+    }
+}
+
+static void ProcessOutput(const int client_id, const char* msg, output_t* Output, int* ret, int full = 0) {
+    char lstemp[SBUFFMAX + 256];
+    static unsigned char ss = 0;  // seven segment
+
+    if (type_is_equal(Output->name, "LD")) {
+        snprintf(lstemp, 199, "%s %s= %3.0f\r\n", msg, Output->name, *((float*)Output->status) - 55);
+        *ret += sendtext(client_id, lstemp);
+    } else if (type_is_equal(Output->name, "DS")) {
+        lcd_t* lcd = (lcd_t*)Output->status;
+        char lbuff[81];
+        memcpy(lbuff, lcd->ddram_char, 80);
+        lbuff[80] = 0;
+        for (int i = 0; i < 80; i++) {
+            if (lbuff[i] < 16)
+                lbuff[i] = '*';
+        }
+        snprintf(lstemp, 199, "%s %s= |%.16s\r\n", msg, Output->name, &lbuff[0]);
+
+        int size = strlen(lstemp) - 19;
+        for (int x = 0; x < size; x++) {
+            lstemp[x + size + 19] = ' ';
+        }
+        snprintf(lstemp + (2 * size + 19), 199, "|%.16s\r\n", &lbuff[40]);
+        *ret += sendtext(client_id, lstemp);
+    } else if (type_is_equal(Output->name, "MT")) {
+        unsigned char** status = (unsigned char**)Output->status;
+        snprintf(lstemp, 199, "%s %s-> dir= %i speed= %3i position= %3i\r\n", msg, Output->name, *status[0], *status[1],
+                 *status[2]);
+        *ret += sendtext(client_id, lstemp);
+    } else if (type_is_equal(Output->name, "DG")) {
+        snprintf(lstemp, 199, "%s %s-> angle= %5.1f\r\n", msg, Output->name, *((float*)Output->status) * 180.0 / M_PI);
+        *ret += sendtext(client_id, lstemp);
+    } else if (type_is_equal(Output->name, "SS")) {
+        switch (Output->name[3]) {
+            case 'A':
+                ss = 0x00;
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x01;
+                break;
+            case 'B':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x02;
+                break;
+            case 'C':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x04;
+                break;
+            case 'D':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x08;
+                break;
+            case 'E':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x10;
+                break;
+            case 'F':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x20;
+                break;
+            case 'G':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x40;
+                break;
+            case 'P':
+                if (*((int*)Output->status) > 60)
+                    ss |= 0x80;
+                snprintf(lstemp, 199, "%s SS_%c= %c\r\n", msg, Output->name[4], decodess(ss));
+                *ret += sendtext(client_id, lstemp);
+                break;
+        }
+    } else if (type_is_equal(Output->name, "VT")) {
+        vterm_t* vt = (vterm_t*)Output->status;
+        if (!vt->ReceiveCallback) {
+            vt->ReceiveCallback = VtReceiveCallback;
+        }
+        if (full) {
+            snprintf(lstemp, SBUFFMAX + 255, "%s %s= %3i\r\n%s\r\n", msg, Output->name, Vtcount_in, Vtbuff_in);
+            *ret += sendtext(client_id, lstemp);
+            Vtbuff_in[0] = 0;
+            Vtcount_in = 0;
+        } else {
+            snprintf(lstemp, SBUFFMAX + 255, "%s %s= %3i\r\n", msg, Output->name, Vtcount_in);
+            *ret += sendtext(client_id, lstemp);
+        }
+    } else if (type_is_equal(Output->name, "LM")) {
+        // LED Matrix (MAX7219/MAX7221) - 8x8 LED matrix, 8 bytes representing rows
+        ldd_max72xx_t* ldd = (ldd_max72xx_t*)Output->status;
+        snprintf(lstemp, 199, "%s %s= %02X %02X %02X %02X %02X %02X %02X %02X\r\n", msg, Output->name, ldd->ram[0],
+                 ldd->ram[1], ldd->ram[2], ldd->ram[3], ldd->ram[4], ldd->ram[5], ldd->ram[6], ldd->ram[7]);
+        *ret += sendtext(client_id, lstemp);
+    } else {
+        snprintf(lstemp, 199, "%s %s= unknow type !\r\n", msg, Output->name);
+        *ret += sendtext(client_id, lstemp);
+    }
+}
+
+static char pintypetoletter(unsigned char type) {
+    switch (type) {
+        case PT_POWER:
+            return 'P';
+            break;
+        case PT_DIGITAL:
+            return 'D';
+            break;
+        case PT_ANALOG:
+            return 'A';
+            break;
+        case PT_ANAREF:
+            return 'R';
+            break;
+        case PT_USART:
+            return 'U';
+            break;
+        case PT_NC:
+            return '-';
+            break;
+    }
+    return '?';
+}
+
+int rcontrol_loop(void) {
+    int i, j;
+    int n;
+    int ret = 0;
+    int ret_all = 0;
+    char lstemp[200];
+    board* Board;
+    part* Part;
+    input_t* Input;
+    output_t* Output;
+    const picpin* pins;
+
+    for (int client_id = 0; client_id < MAX_CLIENTS; client_id++) {
+        client_t* client = &clients[client_id];
+
+        // open connection
+        if (client->sockfd < 0) {
+            ret_all |= rcontrol_start(client_id);
+            continue;
+        }
+
+        n = recv(client->sockfd, (char*)&client->buffer[client->bp], 1024 - client->bp, 0);
+
+        if (n > 0) {
+            // remove putty telnet handshake
+            if (client->buffer[client->bp + n] == 3) {
+                for (int x = 0; x < client->bp + n + 1; x++) {
+                    client->buffer[x] = 0;
+                }
+                n = 0;
+                client->bp = 0;
+            }
+
+            if (strchr(client->buffer, '\n')) {
+                char cmd[BSIZE];
+                int cmdsize = 0;
+
+                while (client->buffer[cmdsize] != '\n') {
+                    cmd[cmdsize] = client->buffer[cmdsize];
+                    cmdsize++;
+                }
+                cmd[cmdsize] = 0;
+
+                for (int it = 0; it < BSIZE - cmdsize - 1; it++) {
+                    client->buffer[it] = client->buffer[it + cmdsize + 1];
+                }
+                client->bp -= cmdsize - n + 1;
+
+                if (cmd[cmdsize - 1] == '\r') {
+                    cmd[cmdsize - 1] = 0;  // strip \r
+                }
+
+                // strcpy (cmd, (const char *) lowercase (cmd).c_str ());
+
+                dprint("cmd[%s] [%i]\n", cmd, client_id);
+
+                switch (cmd[0]) {
+                    case 'b':
+                        if (!strcmp(cmd, "blist")) {
+                            // Command blist
+                            // ========================================================
+                            ret += sendtext(client_id, "Supported Boards:\r\n");
+                            ret += sendtext(client_id, PICSimLab.GetSupportedBoards().c_str());
+                            ret += sendtext(client_id, "\r\n");
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strcmp(cmd, "bblist")) {
+                            // Command bblist
+                            // ========================================================
+                            ret += sendtext(client_id, "Supported Backend Simulator:\r\n");
+                            ret += sendtext(client_id, PICSimLab.GetBoard()->GetSimBackends().c_str());
+                            ret += sendtext(client_id, "\r\n");
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strcmp(cmd, "bdlist")) {
+                            // Command bdlist
+                            // ========================================================
+                            ret += sendtext(client_id, "Supported Debuggers:\r\n");
+                            ret += sendtext(client_id, PICSimLab.GetBoard()->GetDebuggers().c_str());
+                            ret += sendtext(client_id, "\r\n");
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strcmp(cmd, "bilist")) {
+                            // Command bilist
+                            // ========================================================
+                            ret += sendtext(client_id, "Project Wizard Supported IDEs:\r\n");
+                            ret += sendtext(client_id, PICSimLab.GetBoard()->GetSupportedIDEs().c_str());
+                            ret += sendtext(client_id, "\r\n");
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strcmp(cmd, "buclist")) {
+                            // Command buclist
+                            // ========================================================
+                            ret += sendtext(client_id, "Supported Microcontrollers:\r\n");
+                            ret += sendtext(client_id, PICSimLab.GetBoard()->GetSupportedDevices().c_str());
+                            ret += sendtext(client_id, "\r\n");
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'c':
+                        if (!strncmp(cmd, "clk", 3)) {
+                            // Command clk =====================================================
+
+                            if (strlen(cmd) < 4) {
+                                snprintf(lstemp, 100, "%2.1f MHz\r\nOk\r\n>", PICSimLab.GetClock());
+                                ret = sendtext(client_id, lstemp);
+                            } else {
+                                float clk;
+                                sscanf(cmd + 3, "%f", &clk);
+
+                                PICSimLab.SetClock(clk, 0);
+
+                                snprintf(lstemp, 100, "Set to %2.1f MHz\r\nOk\r\n>", PICSimLab.GetClock());
+                                ret = sendtext(client_id, lstemp);
+                            }
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'd':
+                        if (strstr(cmd, "dumpr")) {
+                            // Command dumpr
+                            // ========================================================
+                            Board = PICSimLab.GetBoard();
+                            unsigned int addr;
+                            unsigned int size;
+                            int sret = sscanf(cmd + 5, "%x %u \n", &addr, &size);
+
+                            if (sret == -1)  // all
+                            {
+                                for (unsigned int it = 0; it < Board->DBGGetRAMSize(); it += 16) {
+                                    snprintf(lstemp, 100, "%04X: ", it);
+                                    ret += sendtext(client_id, lstemp);
+                                    for (int jt = 0; jt < 16; jt++) {
+                                        snprintf(lstemp, 100, "%02X ", Board->DBGGetRAM_p()[jt + it]);
+                                        ret += sendtext(client_id, lstemp);
+                                    }
+                                    snprintf(lstemp, 100, "\r\n");
+                                    ret += sendtext(client_id, lstemp);
+                                }
+                                snprintf(lstemp, 100, "\r\nOk\r\n>");
+                                ret += sendtext(client_id, lstemp);
+                            } else if (sret == 1)  // only one addr
+                            {
+                                if (addr < Board->DBGGetRAMSize()) {
+                                    snprintf(lstemp, 100, "%04X: %02X \r\nOk\r\n>", addr, Board->DBGGetRAM_p()[addr]);
+                                    ret += sendtext(client_id, lstemp);
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else  // vector from addr
+                            {
+                                for (unsigned int it = addr; (it < (addr + size)) && it < Board->DBGGetRAMSize();
+                                     it += 16) {
+                                    snprintf(lstemp, 100, "%04X: ", it);
+                                    ret += sendtext(client_id, lstemp);
+
+                                    for (unsigned int jt = 0;
+                                         (jt < 16) && (jt < size - (it - addr)) && (it + jt) < Board->DBGGetRAMSize();
+                                         jt++) {
+                                        snprintf(lstemp, 100, "%02X ", Board->DBGGetRAM_p()[jt + it]);
+                                        ret += sendtext(client_id, lstemp);
+                                    }
+
+                                    snprintf(lstemp, 100, "\r\n");
+                                    ret += sendtext(client_id, lstemp);
+                                }
+                                snprintf(lstemp, 100, "\r\nOk\r\n>");
+                                ret += sendtext(client_id, lstemp);
+                            }
+                        } else if (strstr(cmd, "dumpe")) {
+                            // Command dumpe
+                            // ========================================================
+                            Board = PICSimLab.GetBoard();
+                            unsigned int addr;
+                            unsigned int size;
+                            int sret = sscanf(cmd + 5, "%x %u \n", &addr, &size);
+
+                            if (sret == -1)  // all
+                            {
+                                for (unsigned int it = 0; it < Board->DBGGetEEPROM_Size(); it += 16) {
+                                    snprintf(lstemp, 100, "%04X: ", it);
+                                    ret += sendtext(client_id, lstemp);
+                                    for (int jt = 0; jt < 16; jt++) {
+                                        snprintf(lstemp, 100, "%02X ", Board->DBGGetEEPROM_p()[jt + it]);
+                                        ret += sendtext(client_id, lstemp);
+                                    }
+                                    snprintf(lstemp, 100, "\r\n");
+                                    ret += sendtext(client_id, lstemp);
+                                }
+                                snprintf(lstemp, 100, "\r\nOk\r\n>");
+                                ret += sendtext(client_id, lstemp);
+                            } else if (sret == 1)  // only one addr
+                            {
+                                if (addr < Board->DBGGetEEPROM_Size()) {
+                                    snprintf(lstemp, 100, "%04X: %02X \r\nOk\r\n>", addr,
+                                             Board->DBGGetEEPROM_p()[addr]);
+                                    ret += sendtext(client_id, lstemp);
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else  // vector from addr
+                            {
+                                for (unsigned int it = addr; (it < (addr + size)) && it < Board->DBGGetEEPROM_Size();
+                                     it += 16) {
+                                    snprintf(lstemp, 100, "%04X: ", it);
+                                    ret += sendtext(client_id, lstemp);
+
+                                    for (unsigned int jt = 0; (jt < 16) && (jt < size - (it - addr)) &&
+                                                              (it + jt) < Board->DBGGetEEPROM_Size();
+                                         jt++) {
+                                        snprintf(lstemp, 100, "%02X ", Board->DBGGetEEPROM_p()[jt + it]);
+                                        ret += sendtext(client_id, lstemp);
+                                    }
+
+                                    snprintf(lstemp, 100, "\r\n");
+                                    ret += sendtext(client_id, lstemp);
+                                }
+                                snprintf(lstemp, 100, "\r\nOk\r\n>");
+                                ret += sendtext(client_id, lstemp);
+                            }
+                        } else if (strstr(cmd, "dumpf")) {
+                            // Command dumpf
+                            // ========================================================
+                            Board = PICSimLab.GetBoard();
+                            unsigned int addr;
+                            unsigned int size;
+                            int sret = sscanf(cmd + 5, "%x %u \n", &addr, &size);
+
+                            if (sret == -1)  // all
+                            {
+                                for (unsigned int it = 0; it < Board->DBGGetROMSize(); it += 16) {
+                                    snprintf(lstemp, 100, "%04X: ", it);
+                                    ret += sendtext(client_id, lstemp);
+                                    for (int jt = 0; jt < 16; jt++) {
+                                        snprintf(lstemp, 100, "%02X ", Board->DBGGetROM_p()[jt + it]);
+                                        ret += sendtext(client_id, lstemp);
+                                    }
+                                    snprintf(lstemp, 100, "\r\n");
+                                    ret += sendtext(client_id, lstemp);
+                                }
+                                snprintf(lstemp, 100, "\r\nOk\r\n>");
+                                ret += sendtext(client_id, lstemp);
+                            } else if (sret == 1)  // only one addr
+                            {
+                                if (addr < Board->DBGGetROMSize()) {
+                                    snprintf(lstemp, 100, "%04X: %02X \r\nOk\r\n>", addr, Board->DBGGetROM_p()[addr]);
+                                    ret += sendtext(client_id, lstemp);
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else  // vector from addr
+                            {
+                                for (unsigned int it = addr; (it < (addr + size)) && it < Board->DBGGetROMSize();
+                                     it += 16) {
+                                    snprintf(lstemp, 100, "%04X: ", it);
+                                    ret += sendtext(client_id, lstemp);
+
+                                    for (unsigned int jt = 0;
+                                         (jt < 16) && (jt < size - (it - addr)) && (it + jt) < Board->DBGGetROMSize();
+                                         jt++) {
+                                        snprintf(lstemp, 100, "%02X ", Board->DBGGetROM_p()[jt + it]);
+                                        ret += sendtext(client_id, lstemp);
+                                    }
+
+                                    snprintf(lstemp, 100, "\r\n");
+                                    ret += sendtext(client_id, lstemp);
+                                }
+                                snprintf(lstemp, 100, "\r\nOk\r\n>");
+                                ret += sendtext(client_id, lstemp);
+                            }
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'e':
+                        if (!strncmp(cmd, "exit", 4)) {
+                            // Command exit
+                            // ========================================================
+                            // sendtext(client_id, "Ok\r\n>");
+                            // Resume simulation if stopped, so timer2 can process the destroy
+                            if (strlen(cmd) > 4) {
+                                int dbg;
+                                sscanf(cmd + 4, "%i", &dbg);
+                                PICSimLab.SetDebugStatus((dbg ? 1 : 0));
+                            }
+                            PICSimLab.SetSimulationRun(1);
+                            PICSimLab.SetWorkspaceFileName("");
+                            PICSimLab.SetToDestroy();
+                            client->waiting_exit = 1;
+                            return 0;
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'g':
+                        if (!strncmp(cmd, "get ", 4)) {
+                            // Command
+                            // get==========================================================
+                            char* ptr;
+                            char* ptr2;
+                            Board = PICSimLab.GetBoard();
+
+                            if ((ptr = strstr(cmd, " board.in["))) {
+                                int in = (ptr[10] - '0') * 10 + (ptr[11] - '0');
+
+                                if (in < Board->GetInputCount()) {
+                                    Input = Board->GetInput(in);
+
+                                    if (Input->status != NULL) {
+                                        snprintf(lstemp, 100, "board.in[%02i]", in);
+                                        ProcessInput(client_id, lstemp, Input, &ret);
+                                        sendtext(client_id, "Ok\r\n>");
+                                    } else {
+                                        ret = sendtext(client_id, "ERROR\r\n>");
+                                    }
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else if ((ptr = strstr(cmd, " board.out["))) {
+                                int out = (ptr[11] - '0') * 10 + (ptr[12] - '0');
+
+                                if (out < Board->GetOutputCount()) {
+                                    Output = Board->GetOutput(out);
+
+                                    if (Output->status != NULL) {
+                                        snprintf(lstemp, 100, "board.out[%02i]", out);
+                                        ProcessOutput(client_id, lstemp, Output, &ret, 1);
+                                        sendtext(client_id, "Ok\r\n>");
+                                    } else {
+                                        ret = sendtext(client_id, "ERROR\r\n>");
+                                    }
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else if ((ptr = strstr(cmd, " apin["))) {
+                                int pin = (ptr[6] - '0') * 10 + (ptr[7] - '0');
+                                if (Board->GetUseSpareParts()) {
+                                    pins = SpareParts.GetPinsValues();
+                                } else {
+                                    Board = PICSimLab.GetBoard();
+                                    pins = Board->MGetPinsValues();
+                                }
+                                snprintf(lstemp, 100, "apin[%02i]= %5.3f \r\nOk\r\n>", pin, pins[pin - 1].avalue);
+                                ret = sendtext(client_id, lstemp);
+                            } else if ((ptr = strstr(cmd, " pin["))) {
+                                int pin = (ptr[5] - '0') * 10 + (ptr[6] - '0');
+                                if (Board->GetUseSpareParts()) {
+                                    pins = SpareParts.GetPinsValues();
+                                } else {
+                                    Board = PICSimLab.GetBoard();
+                                    pins = Board->MGetPinsValues();
+                                }
+                                snprintf(lstemp, 100, "pin[%02i]= %i \r\nOk\r\n>", pin, pins[pin - 1].value);
+                                sendtext(client_id, lstemp);
+                            } else if ((ptr = strstr(cmd, " pinl["))) {
+                                int pin = (ptr[6] - '0') * 10 + (ptr[7] - '0');
+                                if (Board->GetUseSpareParts()) {
+                                    pins = SpareParts.GetPinsValues();
+                                } else {
+                                    Board = PICSimLab.GetBoard();
+                                    pins = Board->MGetPinsValues();
+                                }
+                                snprintf(lstemp, 100, "pin[%02i] %c %c %i %03i %5.3f \"%-8s\" \r\nOk\r\n>", pin,
+                                         pintypetoletter(pins[pin - 1].ptype), (pins[pin - 1].dir == PD_IN) ? 'I' : 'O',
+                                         pins[pin - 1].value, (int)(pins[pin - 1].oavalue - 55), pins[pin - 1].avalue,
+                                         (const char*)Board->MGetPinName(pin).c_str());
+                                ret = sendtext(client_id, lstemp);
+                            } else if ((ptr = strstr(cmd, " pinm["))) {
+                                int pin = (ptr[6] - '0') * 10 + (ptr[7] - '0');
+                                if (Board->GetUseSpareParts()) {
+                                    pins = SpareParts.GetPinsValues();
+                                } else {
+                                    Board = PICSimLab.GetBoard();
+                                    pins = Board->MGetPinsValues();
+                                }
+                                snprintf(lstemp, 100, "pin[%02i] %03i\r\nOk\r\n>", pin,
+                                         (int)(pins[pin - 1].oavalue - 55));
+                                ret = sendtext(client_id, lstemp);
+                            } else if (Board->GetUseSpareParts()) {
+                                if ((ptr = strstr(cmd, "part[")) && (ptr2 = strstr(cmd, "].in["))) {
+                                    int pn = (ptr[5] - '0') * 10 + (ptr[6] - '0');
+                                    int in = (ptr2[5] - '0') * 10 + (ptr2[6] - '0');
+
+                                    if (pn < SpareParts.GetCount()) {
+                                        Part = SpareParts.GetPart(pn);
+                                        if (in < Part->GetInputCount()) {
+                                            Input = Part->GetInput(in);
+
+                                            if (Input->status != NULL) {
+                                                snprintf(lstemp, 100, "part[%02i].in[%02i]", pn, in);
+                                                ProcessInput(client_id, lstemp, Input, &ret);
+                                                sendtext(client_id, "Ok\r\n>");
+                                            } else {
+                                                ret = sendtext(client_id, "ERROR\r\n>");
+                                            }
+                                        } else {
+                                            ret = sendtext(client_id, "ERROR\r\n>");
+                                        }
+                                    } else {
+                                        ret = sendtext(client_id, "ERROR\r\n>");
+                                    }
+                                } else if ((ptr = strstr(cmd, "part[")) && (ptr2 = strstr(cmd, "].out["))) {
+                                    int pn = (ptr[5] - '0') * 10 + (ptr[6] - '0');
+                                    int out = (ptr2[6] - '0') * 10 + (ptr2[7] - '0');
+
+                                    if (pn < SpareParts.GetCount()) {
+                                        Part = SpareParts.GetPart(pn);
+                                        if (out < Part->GetOutputCount()) {
+                                            Output = Part->GetOutput(out);
+
+                                            if (Output->status != NULL) {
+                                                snprintf(lstemp, 100, "part[%02i].out[%02i]", pn, out);
+                                                ProcessOutput(client_id, lstemp, Output, &ret, 1);
+                                                sendtext(client_id, "Ok\r\n>");
+                                            } else {
+                                                ret = sendtext(client_id, "ERROR\r\n>");
+                                            }
+                                        } else {
+                                            ret = sendtext(client_id, "ERROR\r\n>");
+                                        }
+                                    } else {
+                                        ret = sendtext(client_id, "ERROR\r\n>");
+                                    }
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                            return 0;
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'h':
+                        if (!strcmp(cmd, "help")) {
+                            // Command help
+                            // ========================================================
+                            ret += sendtext(client_id, "List of supported commands:\r\n");
+                            ret += sendtext(client_id,
+                                            "  blist                               - list supported boards\r\n");
+                            ret += sendtext(
+                                client_id, "  bblist                              - list board supported backends\r\n");
+                            ret +=
+                                sendtext(client_id,
+                                         "  bdlist                              - list board supported debuggers\r\n");
+                            ret += sendtext(client_id,
+                                            "  bilist                              - list board supported IDEs\n");
+                            ret += sendtext(client_id,
+                                            "  buclist                             - list board supported MCUs\n");
+                            ret += sendtext(client_id,
+                                            "  clk [val MHz]                       - show or set simulation clock\r\n");
+                            ret += sendtext(client_id,
+                                            "  dumpe [addr] [count]                - dump internal EEPROM memory\r\n");
+                            ret += sendtext(client_id, "  dumpf [addr] [count]                - dump Flash memory\r\n");
+                            ret += sendtext(client_id, "  dumpr [addr] [count]                - dump RAM memory\r\n");
+                            ret +=
+                                sendtext(client_id,
+                                         "  exit [0/1]                          - shutdown PICSimLab [dbg on/off]\r\n");
+                            ret += sendtext(client_id, "  get obj                             - get object value\r\n");
+                            ret += sendtext(client_id, "  help                                - show this message\r\n");
+                            ret +=
+                                sendtext(client_id,
+                                         "  info                                - show actual setup info and objs\r\n");
+                            ret += sendtext(
+                                client_id, "  loadhex file                        - load hex/bin file (full path)\r\n");
+                            ret += sendtext(
+                                client_id,
+                                "  oscmeasures ch                      - read osc channel 1 or 2 measures\r\n");
+                            ret += sendtext(client_id,
+                                            "  oscrdcfg                            - read osc configuration\r\n");
+                            ret += sendtext(client_id,
+                                            "  oscwrcfg idx \"cfg\"                  - write osc configuration\r\n");
+                            ret += sendtext(
+                                client_id,
+                                "  oscshow [0/1]                       - show status or toggle osc window\r\n");
+                            ret +=
+                                sendtext(client_id,
+                                         "  pins                                - show pins directions and values\r\n");
+                            ret += sendtext(client_id,
+                                            "  pinsl                               - show pins formatted info\r\n");
+                            ret += sendtext(
+                                client_id,
+                                "  pwcreate \"ide\" \"fw\" \"tp\" \"dir\" open - PrjWizard project create\r\n");
+                            ret +=
+                                sendtext(client_id,
+                                         "  pwflist \"ide\"                       - list PrjWizard ide frameworks\r\n");
+                            ret += sendtext(client_id,
+                                            "  pwtlist \"ide\" \"fw\"                  - list PrjWizard templates\r\n");
+                            ret += sendtext(
+                                client_id, "  quit                                - quit remote control interface\r\n");
+                            ret += sendtext(client_id, "  reset                               - reset the board\r\n");
+                            ret += sendtext(client_id,
+                                            "  saveworkspace \"file.pzw\"            - save PICSimLab workspace\r\n");
+                            ret += sendtext(client_id,
+                                            "  set obj value                       - set object with value\r\n");
+                            ret += sendtext(
+                                client_id, "  sim [start/stop]                    - show status or start/stop sim\r\n");
+                            ret += sendtext(client_id,
+                                            "  spadd \"pname\" x y                   - adds the named spare part\r\n");
+                            ret += sendtext(client_id,
+                                            "  spdel pid/all                       - delete one spare part or all\r\n");
+                            ret += sendtext(
+                                client_id, "  sprdcfg pid                         - read spare part configuration\r\n");
+                            ret += sendtext(
+                                client_id,
+                                "  spwrcfg pid \"cfg\"                   - write spare part configuration\r\n");
+                            ret += sendtext(client_id,
+                                            "  splist                              - list supported spare parts\r\n");
+                            ret +=
+                                sendtext(client_id,
+                                         "  spshow [0/1]                        - show status or toggle sp window\r\n");
+                            ret += sendtext(
+                                client_id, "  sync                                - wait to sync with timer event\r\n");
+                            ret += sendtext(client_id,
+                                            "  version                             - show PICSimLab version\r\n");
+
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'i':
+                        if (!strcmp(cmd, "info")) {
+                            // Command info
+                            // ========================================================
+                            Board = PICSimLab.GetBoard();
+                            snprintf(lstemp, 100, "Board:     %s\r\n", (const char*)Board->GetName().c_str());
+                            ret += sendtext(client_id, lstemp);
+                            snprintf(lstemp, 100, "Processor: %s\r\n", (const char*)Board->GetProcessorName().c_str());
+                            ret += sendtext(client_id, lstemp);
+                            snprintf(lstemp, 100, "Frequency: %10.0f Hz\r\n", Board->MGetFreq());
+                            ret += sendtext(client_id, lstemp);
+                            snprintf(lstemp, 100, "Use Spare: %i\r\n", Board->GetUseSpareParts());
+                            ret += sendtext(client_id, lstemp);
+
+                            for (i = 0; i < Board->GetInputCount(); i++) {
+                                Input = Board->GetInput(i);
+                                if ((Input->status != NULL)) {
+                                    snprintf(lstemp, 100, "    board.in[%02i]", i);
+                                    ProcessInput(client_id, lstemp, Input, &ret);
+                                }
+                            }
+
+                            for (i = 0; i < Board->GetOutputCount(); i++) {
+                                Output = Board->GetOutput(i);
+                                if (Output->status != NULL) {
+                                    snprintf(lstemp, 100, "    board.out[%02i]", i);
+                                    ProcessOutput(client_id, lstemp, Output, &ret);
+                                }
+                            }
+
+                            if (Board->GetUseSpareParts()) {
+                                for (i = 0; i < SpareParts.GetCount(); i++) {
+                                    Part = SpareParts.GetPart(i);
+                                    snprintf(lstemp, 100, "  part[%02i]: %s\r\n", i,
+                                             (const char*)Part->GetName().c_str());
+                                    ret += sendtext(client_id, lstemp);
+
+                                    for (j = 0; j < Part->GetInputCount(); j++) {
+                                        Input = Part->GetInput(j);
+                                        if (Input->status != NULL) {
+                                            snprintf(lstemp, 100, "    part[%02i].in[%02i]", i, j);
+                                            ProcessInput(client_id, lstemp, Input, &ret);
+                                        }
+                                    }
+                                    for (j = 0; j < Part->GetOutputCount(); j++) {
+                                        Output = Part->GetOutput(j);
+                                        if (Output->status != NULL) {
+                                            snprintf(lstemp, 100, "    part[%02i].out[%02i]", i, j);
+                                            ProcessOutput(client_id, lstemp, Output, &ret);
+                                        }
+                                    }
+                                }
+                            }
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'l':
+                        if (!strncmp(cmd, "loadhex ", 8)) {
+                            // Command loadhex
+                            // ========================================================
+                            char* ptr;
+                            if ((ptr = strchr(cmd, '\r'))) {
+                                ptr[0] = 0;
+                            }
+                            if ((ptr = strchr(cmd, '\n'))) {
+                                ptr[0] = 0;
+                            }
+
+                            if (PICSimLab.GetNeedReboot()) {
+                                PICSimLab.SetToDestroy(RC_LOAD);
+                                ret += sendtext(client_id, "Ok\r\n>");
+                                strcpy(file_to_load, cmd + 8);
+                                ret = 1;
+                            } else {
+                                if (PICSimLab.LoadHexFile(cmd + 8)) {
+                                    ret += sendtext(client_id, "ERROR\r\n>");
+                                } else {
+                                    ret += sendtext(client_id, "Ok\r\n>");
+                                }
+                            }
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'o':
+                        if (!strncmp(cmd, "oscmeasures", 11)) {
+                            // Command oscmeasures =====================================================
+                            int ch = -1;
+                            char stemp[256];
+                            sscanf(cmd + 11, "%d", &ch);
+
+                            if ((ch < 1) || (ch > 2)) {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            } else {
+                                ch_status_t st = Oscilloscope.GetChannelStatus(ch - 1);
+                                sprintf(stemp, "Channel %i:\r\n", ch);
+                                ret = sendtext(client_id, stemp);
+
+                                sprintf(stemp, "  Vmax= %7.3f V\r\n", st.Vmax);
+                                ret += sendtext(client_id, stemp);
+                                sprintf(stemp, "  Vmin= %7.3f V\r\n", st.Vmin);
+                                ret += sendtext(client_id, stemp);
+                                sprintf(stemp, "  Vavr= %7.3f V\r\n", st.Vavr);
+                                ret += sendtext(client_id, stemp);
+                                sprintf(stemp, "  Vrms= %7.3f V\r\n", st.Vrms);
+                                ret += sendtext(client_id, stemp);
+
+                                sprintf(stemp, "  Freq= %7.3f Hz\r\n", st.Freq);
+                                ret += sendtext(client_id, stemp);
+                                sprintf(stemp, "  Duty= %7.3f %%\r\n", st.Duty);
+                                ret += sendtext(client_id, stemp);
+
+                                sprintf(stemp, "  Pcyc= %7.3f ms\r\n", st.PCycle_ms);
+                                ret += sendtext(client_id, stemp);
+                                sprintf(stemp, "  Ncyc= %7.3f ms\r\n", st.FCycle_ms - st.PCycle_ms);
+                                ret += sendtext(client_id, stemp);
+                                sprintf(stemp, "  Fcyc= %7.3f ms\r\n", st.FCycle_ms);
+                                ret += sendtext(client_id, stemp);
+
+                                ret += sendtext(client_id, "Ok\r\n>");
+                            }
+                        } else if (!strcmp(cmd, "oscrdcfg")) {
+                            // Command oscrdcfg =====================================================
+                            char stemp[256];
+                            std::vector<std::string> osc_list = Oscilloscope.WritePreferencesList();
+                            for (unsigned int ol = 0; ol < osc_list.size(); ol++) {
+                                sprintf(stemp, "%i:\"", ol);
+                                ret = sendtext(client_id, stemp);
+                                ret += sendtext(client_id, osc_list.at(ol).c_str());
+                                ret += sendtext(client_id, "\"\r\n");
+                            }
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strncmp(cmd, "oscwrcfg", 8)) {
+                            // Command oscwrcfg =====================================================
+                            int idx = -1;
+                            char ocscfg[512];
+                            sscanf(cmd + 8, "%d \"%511[^\"]\"", &idx, ocscfg);
+
+                            if ((idx < 0) || (idx > 2)) {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            } else {
+                                std::vector<std::string> osc_list = Oscilloscope.WritePreferencesList();
+                                osc_list.at(idx).assign(ocscfg);
+                                Oscilloscope.ReadPreferencesList(osc_list);
+                                ret = sendtext(client_id, "Ok\r\n>");
+                            }
+                        } else if (!strncmp(cmd, "oscshow", 7)) {
+                            // Command oscshow =====================================================
+
+                            if (strlen(cmd) < 8) {
+                                snprintf(lstemp, 100, "%i\r\nOk\r\n>", PICSimLab.GetBoard()->GetUseOscilloscope());
+                                ret = sendtext(client_id, lstemp);
+                            } else {
+                                int show;
+                                sscanf(cmd + 7, "%i", &show);
+                                PICSimLab.GetBoard()->SetUseOscilloscope(show);
+                                snprintf(lstemp, 100, "Set to %i\r\nOk\r\n>", show);
+                                ret = sendtext(client_id, lstemp);
+                            }
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'p':
+                        if (!strcmp(cmd, "pins")) {
+                            // Command pins
+                            // ========================================================
+                            Board = PICSimLab.GetBoard();
+                            pins = Board->MGetPinsValues();
+                            int p2 = Board->MGetPinCount() / 2;
+                            for (i = 0; i < p2; i++) {
+                                snprintf(lstemp, 100,
+                                         "  pin[%02i] (%8.8s) %c %i                 pin[%02i] (%-8.8s) %c %i "
+                                         "\r\n",
+                                         i + 1, (const char*)Board->MGetPinName(i + 1).c_str(),
+                                         (pins[i].dir == PD_IN) ? '<' : '>', pins[i].value, i + 1 + p2,
+                                         (const char*)Board->MGetPinName(i + 1 + p2).c_str(),
+                                         (pins[i + p2].dir == PD_IN) ? '<' : '>', pins[i + p2].value);
+                                ret += sendtext(client_id, lstemp);
+                            }
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strcmp(cmd, "pinsl")) {
+                            // Command pinsl
+                            // ========================================================
+                            Board = PICSimLab.GetBoard();
+                            pins = Board->MGetPinsValues();
+                            snprintf(lstemp, 100, "%i pins [%s]:\r\n", Board->MGetPinCount(),
+                                     (const char*)Board->GetProcessorName().c_str());
+                            ret += sendtext(client_id, lstemp);
+                            for (i = 0; i < Board->MGetPinCount(); i++) {
+                                snprintf(lstemp, 100, "  pin[%02i] %c %c %i %03i %5.3f \"%-8.8s\" \r\n", i + 1,
+                                         pintypetoletter(pins[i].ptype), (pins[i].dir == PD_IN) ? 'I' : 'O',
+                                         pins[i].value, (int)(pins[i].oavalue - 55), pins[i].avalue,
+                                         (const char*)Board->MGetPinName(i + 1).c_str());
+                                ret += sendtext(client_id, lstemp);
+                            }
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strncmp(cmd, "pwcreate ", 9)) {
+                            // Command pwcreate =====================================================
+
+                            char ide[100];
+                            char framework[100];
+                            char ctemplate[100];
+                            char dir[512];
+                            int open = 0;
+                            ide[0] = 0;
+                            framework[0] = 0;
+                            ctemplate[0] = 0;
+                            dir[0] = 0;
+                            sscanf(cmd + 9, " \"%99[^\"]\" \"%99[^\"]\" \"%99[^\"]\" \"%99[^\"]\" %i", ide, framework,
+                                   ctemplate, dir, &open);
+
+                            if (open == 0) {
+                                open = 1;
+                            } else {
+                                open = 3;
+                            }
+
+                            if (ide[0] && framework[0] && ctemplate[0] && ide[0] && open) {
+                                if (dir[strlen(dir)] != '/') {
+                                    strcat(dir, "/");
+                                }
+                                int st = Window6.CreateProject(ide, framework, ctemplate, dir, open);
+                                if (st == 0) {
+                                    ret += sendtext(client_id, "Ok\r\n>");
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                        } else if (!strncmp(cmd, "pwflist ", 8)) {
+                            // Command pwflist =====================================================
+
+                            char ide[100];
+                            ide[0] = 0;
+                            sscanf(cmd + 8, " \"%99[^\"]\" ", ide);
+                            if (ide[0]) {
+                                ret = sendtext(client_id, "Project Wizard Supported Frameworks:\r\n");
+                                ret = sendtext(client_id, Window6.GetFrameworkList(ide));
+                                ret += sendtext(client_id, "\r\nOk\r\n>");
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                        } else if (!strncmp(cmd, "pwtlist ", 8)) {
+                            // Command pwtlist =====================================================
+
+                            char ide[100];
+                            char framework[100];
+                            ide[0] = 0;
+                            framework[0] = 0;
+                            sscanf(cmd + 8, " \"%99[^\"]\" \"%99[^\"]\" ", ide, framework);
+                            if (ide[0] && framework[0]) {
+                                ret = sendtext(client_id, "Project Wizard Supported Templates:\r\n");
+                                ret = sendtext(client_id, Window6.GetExampleList(ide, framework));
+                                ret += sendtext(client_id, "\r\nOk\r\n>");
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'q':
+                        if (!strcmp(cmd, "quit")) {
+                            // Command quit
+                            // ========================================================
+                            sendtext(client_id, "Ok\r\n>");
+                            ret = 1;
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'r':
+                        if (!strcmp(cmd, "reset")) {
+                            // Command reset
+                            // =======================================================
+                            PICSimLab.GetBoard()->MReset(0);
+                            ret = sendtext(client_id, "Ok\r\n>");
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 's':
+                        if (!strncmp(cmd, "saveworkspace ", 14)) {
+                            // Command saveworkspace =====================================================
+
+                            char dir[512];
+
+                            sscanf(cmd + 14, " \"%99[^\"]\" ", dir);
+
+                            if (!PICSimLab.SaveWorkspace(dir)) {
+                                ret = sendtext(client_id, "Ok\r\n>");
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                        } else if (!strncmp(cmd, "set ", 4)) {
+                            // Command set
+                            // =========================================================
+                            char* ptr;
+                            char* ptr2;
+                            Board = PICSimLab.GetBoard();
+
+                            if ((ptr = strstr(cmd, " board.in["))) {
+                                int in = (ptr[10] - '0') * 10 + (ptr[11] - '0');
+                                int value;
+
+                                sscanf(ptr + 13, "%i", &value);
+
+                                dprint("board.in[%02i] = %i [%i]\r\n", in, value, client_id);
+
+                                if (in < Board->GetInputCount()) {
+                                    Input = Board->GetInput(in);
+
+                                    if (Input->status != NULL) {
+                                        *((unsigned char*)Input->status) = value;
+                                        sendtext(client_id, "Ok\r\n>");
+                                        if (Input->update) {
+                                            *Input->update = 1;
+                                        }
+                                    } else {
+                                        ret = sendtext(client_id, "ERROR\r\n>");
+                                    }
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else if ((ptr = strstr(cmd, " apin["))) {
+                                int pin = (ptr[6] - '0') * 10 + (ptr[7] - '0');
+                                float value;
+
+                                sscanf(ptr + 9, "%f", &value);
+
+                                dprint("apin[%02i] = %f [%i]\r\n", pin, value, client_id);
+
+                                if (Board->GetUseSpareParts()) {
+                                    SpareParts.SetAPin(pin, value);
+                                } else {
+                                    Board = PICSimLab.GetBoard();
+                                    Board->MSetAPin(pin, value);
+                                }
+                                sendtext(client_id, "Ok\r\n>");
+                            } else if ((ptr = strstr(cmd, " pin["))) {
+                                int pin = (ptr[5] - '0') * 10 + (ptr[6] - '0');
+                                int value;
+
+                                sscanf(ptr + 8, "%i", &value);
+
+                                dprint("pin[%02i] = %i [%i]\r\n", pin, value, client_id);
+
+                                Board->IoLockAccess();
+                                if (Board->GetUseSpareParts()) {
+                                    SpareParts.SetPin(pin, value);
+                                } else {
+                                    Board = PICSimLab.GetBoard();
+                                    Board->MSetPin(pin, value);
+                                }
+                                Board->IoUnlockAccess();
+                                sendtext(client_id, "Ok\r\n>");
+                            } else if (Board->GetUseSpareParts() && (ptr = strstr(cmd, "part[")) &&
+                                       (ptr2 = strstr(cmd, "].in["))) {
+                                int pn = (ptr[5] - '0') * 10 + (ptr[6] - '0');
+                                int in = (ptr2[5] - '0') * 10 + (ptr2[6] - '0');
+                                int value;
+
+                                sscanf(ptr2 + 8, "%i", &value);
+
+                                dprint("part[%02i].in[%02i] = %i [%i]\r\n", pn, in, value, client_id);
+
+                                if (pn < SpareParts.GetCount()) {
+                                    Part = SpareParts.GetPart(pn);
+
+                                    if (in < Part->GetInputCount()) {
+                                        Input = Part->GetInput(in);
+
+                                        if (Input->status != NULL) {
+                                            if (type_is_equal(Input->name, "VS")) {
+                                                *((unsigned char*)Input->status) = (value & 0xFF00) >> 8;
+                                                *(((unsigned char*)Input->status) - 1) = value & 0x00FF;
+                                            } else if (type_is_equal(Input->name, "PB") ||
+                                                       type_is_equal(Input->name, "KB") ||
+                                                       type_is_equal(Input->name, "PO") ||
+                                                       type_is_equal(Input->name, "JP")) {
+                                                *((unsigned char*)Input->status) = value;
+                                            } else if (type_is_equal(Input->name, "VT")) {
+                                                vterm_t* vt = (vterm_t*)Input->status;
+                                                if (!vt->ReceiveCallback) {
+                                                    vt->ReceiveCallback = VtReceiveCallback;
+                                                }
+                                                const char* sval = ptr2 + 9;
+                                                strcpy((char*)vt->buff_out, sval);
+                                                vt->count_out = strlen(sval);
+                                            }
+                                            if (Input->update) {
+                                                *Input->update = 1;
+                                            }
+                                            sendtext(client_id, "Ok\r\n>");
+                                        } else {
+                                            ret = sendtext(client_id, "ERROR\r\n>");
+                                        }
+                                    } else {
+                                        ret = sendtext(client_id, "ERROR\r\n>");
+                                    }
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                            return 0;
+                        } else if (!strncmp(cmd, "sim", 3)) {
+                            // Command sim =====================================================
+                            PICSimLab.SetSync(0);
+
+                            if (strstr(cmd + 3, "stop")) {
+                                PICSimLab.SetSimulationRun(0);
+                                ret = sendtext(client_id, "Ok\r\n>");
+                            } else if (strstr(cmd + 3, "start")) {
+                                PICSimLab.SetSimulationRun(1);
+                                ret = sendtext(client_id, "Ok\r\n>");
+                            } else {
+                                if (PICSimLab.GetSimulationRun()) {
+                                    int time;
+                                    PICSimLab.WindowCmd(PW_MAIN, "timer1", PWA_TIMERGETTIME, NULL, &time);
+                                    ret = sendtext(
+                                        client_id,
+                                        FloatStrFormat("Simulation running %5.2fx\r\nOk\r\n>", 100.0 / time).c_str());
+                                } else {
+                                    ret = sendtext(client_id, "Simulation stopped\r\nOk\r\n>");
+                                }
+                            }
+                        } else if (!strncmp(cmd, "spadd ", 6)) {
+                            // Command spadd =====================================================
+
+                            char pname[100];
+                            int xpos, ypos;
+                            sscanf(cmd + 6, " \"%99[^\"]\" %i %i", pname, &xpos, &ypos);
+
+                            part* sp = SpareParts.AddPart(pname, xpos, ypos);
+                            if (sp) {
+                                SpareParts.SetUpdateAll(1);
+                                ret = sendtext(client_id, "Ok\r\n>");
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                        } else if (!strncmp(cmd, "spdel ", 5)) {
+                            if (strstr(cmd + 5, "all")) {
+                                SpareParts.DeleteParts();
+                                SpareParts.SetUpdateAll(1);
+                                ret = sendtext(client_id, "Ok\r\n>");
+                            } else {
+                                int pid = -1;
+                                sscanf(cmd + 5, "%d", &pid);
+                                Part = SpareParts.GetPart(pid);
+                                if (Part) {
+                                    SpareParts.DeletePart(pid);
+                                    SpareParts.SetUpdateAll(1);
+                                    ret = sendtext(client_id, "Ok\r\n>");
+                                } else {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                }
+                            }
+                        } else if (!strncmp(cmd, "sprdcfg ", 8)) {
+                            int pid = -1;
+                            sscanf(cmd + 8, "%d", &pid);
+                            Part = SpareParts.GetPart(pid);
+                            if (Part) {
+                                ret = sendtext(client_id, "\"");
+                                ret += sendtext(client_id, Part->WritePreferences().c_str());
+                                ret += sendtext(client_id, "\"\r\nOk\r\n>");
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+
+                        } else if (!strncmp(cmd, "spwrcfg ", 8)) {
+                            int pid = -1;
+                            char scfg[512];
+                            sscanf(cmd + 8, "%d \"%511[^\"]\"", &pid, scfg);
+                            Part = SpareParts.GetPart(pid);
+                            if (Part) {
+                                if (Part->ReadPreferences(scfg) != Part->PreferencesNumberFields()) {
+                                    ret = sendtext(client_id, "ERROR\r\n>");
+                                } else {
+                                    SpareParts.SetUpdateAll(1);
+                                    ret = sendtext(client_id, "Ok\r\n>");
+                                }
+                            } else {
+                                ret = sendtext(client_id, "ERROR\r\n>");
+                            }
+                        } else if (!strcmp(cmd, "splist")) {
+                            // Command splist
+                            // ========================================================
+                            ret += sendtext(client_id, "Supported Spare Parts:\r\n");
+                            for (int it = 0; it < NUM_PARTS; it++) {
+                                ret += sendtext(client_id, "\"");
+                                ret += sendtext(client_id, parts_list[it].name);
+                                ret += sendtext(client_id, "\", ");
+                            }
+                            ret += sendtext(client_id, "\r\n");
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else if (!strncmp(cmd, "spshow", 6)) {
+                            // Command spshow =====================================================
+
+                            if (strlen(cmd) < 7) {
+                                snprintf(lstemp, 100, "%i\r\nOk\r\n>", PICSimLab.GetBoard()->GetUseSpareParts());
+                                ret = sendtext(client_id, lstemp);
+                            } else {
+                                int show;
+                                sscanf(cmd + 6, "%i", &show);
+                                PICSimLab.GetBoard()->SetUseSpareParts(show);
+                                snprintf(lstemp, 100, "Set to %i\r\nOk\r\n>", show);
+                                ret = sendtext(client_id, lstemp);
+                            }
+                        } else if (!strcmp(cmd, "sync")) {
+                            // Command sync =====================================================
+                            PICSimLab.SetSync(0);
+                            while (!PICSimLab.GetSync()) {
+                                usleep(1);  // FIXME avoid use of usleep to reduce cpu usage
+                            }
+                            ret = sendtext(client_id, "Ok\r\n>");
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    case 'v':
+                        if (!strcmp(cmd, "version")) {
+                            // Command version
+                            // =====================================================
+                            snprintf(lstemp, 100,
+                                     "Developed by L.C. Gamboa\r\n "
+                                     "<lcgamboa@yahoo.com>\r\n Version: %s %s %s %s\r\n",
+                                     _VERSION_, _DATE_, _ARCH_, _PKG_);
+                            ret += sendtext(client_id, lstemp);
+                            ret += sendtext(client_id, "Ok\r\n>");
+                        } else {
+                            ret = sendtext(client_id, "ERROR\r\n>");
+                        }
+                        break;
+                    default:
+                        // Uknown command
+                        // ========================================================
+                        ret = sendtext(client_id, "ERROR\r\n>");
+                        break;
+                }
+            } else {
+                client->bp += n;
+                if (client->bp > BSIZE)
+                    client->bp = BSIZE;
+            }
+        } else {
+            if (n == 0) {
+                // Client closed connection (FIN received)
+                dprint("rcontrol: client disconnected (recv returned 0)[%i]\n", client_id);
+                ret = 1;
+            } else {
+                // n < 0: check if it's a real error or just no data available
+#ifndef _WIN_
+                if (errno != EAGAIN)
+#else
+                if (WSAGetLastError() != WSAEWOULDBLOCK)
+#endif
+                {
+                    ret = 1;  // recv ERROR
+                } else {
+                    ret = 0;  // recv no data (non-blocking socket, try again later)
+                }
+            }
+        }
+
+        // close connection
+        if (ret) {
+            rcontrol_stop(client_id);
+        }
+
+        ret_all |= ret;
+    }
+
+    return ret_all;
+}

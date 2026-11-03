@@ -1,0 +1,38 @@
+include ../VERSION
+
+PKG ?= "native"
+
+OBJS = ppicsimlab.o picsimlab1.o picsimlab2.o picsimlab3.o picsimlab4.o picsimlab5.o picsimlab6.o 
+
+OBJS+= $(patsubst lib/%.cc,lib/%.o,$(wildcard lib/*.cc)) 
+OBJS+= $(patsubst sim_backend/%.cc,sim_backend/%.o,$(wildcard sim_backend/bsim*.cc)) 
+OBJS+= $(patsubst boards/%.cc,boards/%.o,$(wildcard boards/board*.cc)) 
+OBJS+= sim_backend/bridge_gpsim.o
+OBJS+= $(patsubst devices/%.cc,devices/%.o,$(filter-out devices/prog_psp.cc,$(wildcard devices/*.cc)))
+OBJS+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/input*.cc))
+OBJS+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/output*.cc))
+OBJS+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/virtual*.cc))
+OBJS+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/other*.cc))
+
+OBJS_EXP= $(patsubst boards/%.cc,boards/%.o,$(wildcard boards/exp_*.cc)) 
+OBJS_EXP+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/exp_*.cc)) 
+
+.DEFAULT_GOAL := all
+
+.PHONY: exp 
+
+exp: OBJS+=$(OBJS_EXP)  
+exp: EFLAGS=-D_EXPERIMENTAL_ 
+#exp: rebuild
+exp: $(OBJS_EXP)  all
+
+rebuild:
+	rm -rf picsimlab
+
+override CXXFLAGS+= $(EFLAGS) -DEXT_BROWSER_EXAMPLES -DLEGACY081 -D_PKG_=\"${PKG}\"
+
+
+sim_backend/bridge_gpsim.o: sim_backend/bridge_gpsim.cc
+	@echo "Compiling $<"
+	@$(CXX) $(CXXFLAGS)  $(PKG_CONFIG)  sim_backend/bridge_gpsim.cc  -c -o sim_backend/bridge_gpsim.o 
+

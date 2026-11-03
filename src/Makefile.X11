@@ -1,0 +1,73 @@
+include Makefile.Common
+
+
+CXX =  g++
+
+PKG_CONFIG= `pkg-config --cflags glib-2.0` 
+
+prefix=/usr
+
+RM= rm -f
+CP= cp
+MKDIR = mkdir -p
+EFLAGS=
+
+appdir= ${prefix}/share/applications/
+sharedir= ${prefix}/share/picsimlab/
+execdir= ${prefix}/bin/
+
+#lxrad automatic generated block start, don't edit below!
+
+override CXXFLAGS += -DEXT_BROWSER -D_VERSION_=\"${VERSION}\" -Wall -g -O2  -D_SHARE_=\"../share/picsimlab/\"  \
+                     -I/usr/include/lxrad_X11 -Wall  -D_REENTRANT -D_LIB_=\"../lib/picsimlab/\" 
+
+override CXXFLAGS+= -D_CONSOLE_LOG_
+#override CXXFLAGS+= -D_NOTHREAD
+#override CXXFLAGS+=-fsanitize=address
+
+override CXXFLAGS+= -D_ARCH_=\"Linux64_X11\" -D_DATE_=\"${DATE}\"
+
+#LIBS = `lxrad_X11-config --libs` -lpicsim -lsimavr -lelf -lminizip  $(ELIBS) -lucsim
+#LIBS =  ../../LXRAD_X11/lib/liblxrad_X11.a  
+LIBS =  ../../LXRAD_X11/lib/liblxrad_X11_mt.a 
+LIBS+= -lopenal -lminizip -lXpm -lImlib2 -lX11 -lpthread \
+ ../../picsim/src/libpicsim_dbg.a  ../../simavr/simavr/obj-x86_64-linux-gnu/libsimavr.a -lelf -lminizip $(ELIBS) \
+ ../../lunasvg/build/liblunasvg.a -lucsim -ldl -lgpsim -lcurl 
+
+
+#lxrad automatic generated block end, don't edit above!
+
+all: picsimlab_X11
+
+picsimlab_X11:  $(OBJS) 
+	@echo "Linking picsimlab"
+	@$(CXX) $(CXXFLAGS) $(OBJS) -opicsimlab_X11 $(LIBS) 
+
+%.o: %.cc
+	@echo "Compiling $<"
+	@$(CXX) -c $(CXXFLAGS) $< -o $@ 
+
+install: all
+	${MKDIR} ${sharedir}
+	$(CP) -dvf  ../share/picsimlab.desktop ${appdir} 
+	$(CP) -drvf ../share/* ${sharedir} 
+	$(CP) -drvf ../docs ${sharedir} 
+	$(CP) -dvf picsimlab ${execdir}
+	xdg-icon-resource install --context mimetypes --size 48 ../share/application-x-picsimlab-workspace.png application-x-picsimlab-workspace
+	xdg-mime install --mode system ../share/application-x-picsimlab-workspace.xml
+	xdg-mime default picsimlab.desktop application/x-picsimlab-workspace
+	update-mime-database /usr/share/mime &
+	update-desktop-database ${appdir} &
+
+uninstall:
+	$(RM) -drvf ${sharedir} 
+	$(RM) -dvf ${execdir}picsimlab
+	$(RM) -dvf ${appdir}picsimlab.desktop
+	xdg-icon-resource uninstall  --context mimetypes --size 48 application-x-picsimlab-workspace
+	xdg-mime uninstall  --mode system ../share/application-x-picsimlab-workspace.xml
+
+run: all
+	./picsimlab
+
+clean:
+	$(RM) picsimlab_X11 *.o core */*.o 

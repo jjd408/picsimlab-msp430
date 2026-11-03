@@ -1,0 +1,207 @@
+app-id: com.github.lcgamboa.picsimlab
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: picsimlab
+rename-desktop-file: picsimlab.desktop
+rename-icon: picsimlab
+rename-icon: application-x-picsimlab-workspace  
+finish-args:
+  - --device=dri
+  - --device=all
+  - --filesystem=xdg-documents
+  - --filesystem=home
+  - --filesystem=/tmp/
+  - --persist=.picsimlab
+  - --share=ipc
+  - --share=network  
+  - --socket=x11
+  - --socket=pulseaudio
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/libwx_gtk3u_adv*
+  - /lib/libwx_baseu_xml*  
+  - /share/man
+  - '*.a'
+  - '*.la'
+modules:
+  - name: picsimlab
+    builddir: true
+    buildsystem: simple
+    build-commands:
+     - make -j$(nproc) PKG=\"FLATPAK\" CXXFLAGS=-DFLATPAK_TARGET
+     - make install_app DESTDIR=/app 
+    sources:
+      - type: git
+        url: https://github.com/lcgamboa/picsimlab.git 
+        branch: master
+    modules:
+      - name: picsim
+        buildsystem: simple
+        build-commands:
+          - make -j$(nproc)
+          - make install DESTDIR=/app 
+        sources:
+          - type: git
+            url: https://github.com/lcgamboa/picsim.git
+            branch: master  
+      - name: simavr
+        buildsystem: simple
+        build-commands:
+          - make build-simavr -j$(nproc) 
+          - make install-simavr DESTDIR=/app 
+        sources:
+          - type: git
+            url: https://github.com/lcgamboa/simavr.git
+            branch: master  
+      - name: ucsim
+        buildsystem: simple
+        build-commands:
+          - ./configure CFLAGS=-fPIC CXXFLAGS=-fPIC --prefix=/app
+          - make -j$(nproc)
+          - cd picsimlab; make clean; make  
+          - cd picsimlab; make install DESTDIR=/app 
+        sources:
+          - type: git
+            url: https://github.com/lcgamboa/uCsim_picsimlab.git
+            branch: picsimlab 
+      - name: gpsim
+        buildsystem: simple
+        build-commands:
+          - ./configure  CFLAGS=-fPIC CXXFLAGS=-fPIC --disable-gui --prefix=/app
+          - make -j$(nproc)
+          - make install 
+        sources:
+          - type: archive
+            url : https://sourceforge.net/projects/gpsim/files/gpsim/0.32.0/gpsim-0.32.1.tar.gz
+            sha256: c704d923ae771fabb7f63775a564dfefd7018a79c914671c4477854420b32e69
+        modules:
+          - name: libpopt
+            buildsystem: simple
+            build-commands:
+              - ./autogen.sh
+              - ./configure CFLAGS=-fPIC CXXFLAGS=-fPIC --prefix=/app
+              - make -j$(nproc)
+              - make install
+            sources:
+              - type: archive
+                url: https://github.com/rpm-software-management/popt/archive/refs/tags/popt-1.18-release.zip
+                sha256: 034c935101e706f0fc9fbbf0d0069a795a18c3a8c9fb4f4486306801164a65af 
+      - name: qemu-stm32
+        buildsystem: simple
+        build-options:
+          build-args:
+            - --share=network
+        build-commands:
+          - ./build_libqemu-stm32.sh
+          - strip build/libqemu-stm32.so
+          - install -d /app/lib/picsimlab/qemu/
+          - cp build/libqemu-stm32.so /app/lib/picsimlab/qemu/
+        sources:
+          - type: git
+            url: https://github.com/lcgamboa/qemu.git
+            branch: picsimlab-stm32 
+        modules:
+         - name: python3-distlib
+           buildsystem: simple 
+           build-commands:
+            - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "distlib" --no-build-isolation
+           sources:
+            - type: file
+              url: https://files.pythonhosted.org/packages/33/6b/e0547afaf41bf2c42e52430072fa5658766e3d65bd4b03a563d1b6336f57/distlib-0.4.0-py2.py3-none-any.whl
+              sha256: 9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16
+      - name: qemu-esp32
+        buildsystem: simple
+        build-options:
+          build-args:
+            - --share=network
+        build-commands:
+          - ./build_libqemu-esp32.sh
+          - strip build/libqemu-xtensa.so
+          - install -d /app/lib/picsimlab/qemu/
+          - cp build/libqemu-xtensa.so /app/lib/picsimlab/qemu/
+          - strip build/libqemu-riscv32.so
+          - cp build/libqemu-riscv32.so /app/lib/picsimlab/qemu/          
+          - install -d /app/lib/picsimlab/qemu/fw
+          - cp pc-bios/esp32-v3-rom*.bin pc-bios/esp32c3-rom.bin /app/lib/picsimlab/qemu/fw/
+        sources:
+          - type: git
+            url: https://github.com/lcgamboa/qemu.git
+            branch: picsimlab-esp32
+        modules:
+          - name: libslirp
+            buildsystem: simple
+            build-commands:
+              - meson build --prefix=/app
+              - ninja -C build install 
+            sources:
+             - type: git
+               url: https://gitlab.freedesktop.org/slirp/libslirp.git
+               branch: master                   
+      - name: lxrad
+        buildsystem: simple
+        build-commands:
+          - cd lunasvg; mkdir build
+          - cd lunasvg/build;export CXXFLAGS="-fPIC"; export CFLAGS="-fPIC"; cmake -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON ..; make 
+          - sed -i 's/\"..\/..\/lunasvg\/include\/lunasvg.h\"/\"..\/lunasvg\/include\/lunasvg.h\"/g' lib/lxutils.cc 
+          - sed -i 's/..\/..\/lunasvg\/build\/include\//..\/lunasvg\/build\/include\//g' lib/Makefile.in
+          - ./configure --prefix=/app 
+          - make -j$(nproc) noadv=1
+          - make install DESTDIR=/app noadv=1 
+        sources:  
+          - type: git
+            url: https://github.com/lcgamboa/lxrad.git 
+            branch: master
+          - type: git
+            url: https://github.com/sammycage/lunasvg.git 
+            branch: v2.4.1
+            dest: lunasvg  
+        modules:
+          - name : wxgtk
+            config-opts:
+              - --disable-precomp-headers
+              - --enable-graphics_ctx
+              - --disable-mediactrl
+              - --enable-unicode
+              - --disable-webview   
+              - --disable-webviewwebkit  
+              - --disable-webviewie
+              - --with-gtk=3
+              - --with-libjpeg=sys
+              - --with-libpng=sys
+              - --with-libtiff=sys
+              - --with-libxpm=sys
+              - --without-opengl
+              - --with-regex=builtin
+              - --disable-stc
+              - --disable-html
+              - --disable-mediactrl
+              - --disable-debugreport
+              - --disable-ribbon
+              - --disable-richtext
+              - --disable-xrc
+              - --disable-propgrid
+              - --disable-calendar
+              - --disable-grid
+              - --disable-joystick
+              - --disable-taskbaricon
+              - --disable-sound
+              - --disable-wizarddlg
+              - --disable-sash
+              - --without-expat
+              - --disable-dialupman
+              - --disable-fs_inet
+              - --disable-url
+              - --disable-ftp
+              - --disable-protocol-ftp
+              - --disable-datepick
+              - --disable-aui
+              - --disable-protocol-http
+              - --disable-ipc
+              - --disable-http     
+            sources:
+              - type: archive
+                url : https://github.com/wxWidgets/wxWidgets/releases/download/v3.1.5/wxWidgets-3.1.5.tar.bz2
+                sha256: d7b3666de33aa5c10ea41bb9405c40326e1aeb74ee725bb88f90f1d50270a224
+
