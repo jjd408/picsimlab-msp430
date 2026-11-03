@@ -77,6 +77,21 @@ enum {
     VEC_PORT2 = 24,
     VEC_PORT1 = 25,
     VEC_WDT = 34,
+    VEC_TIMER3_B1 = 36,  // TIMERx_B1 = 42 - 2x (CCR1..n, TBIFG); TIMERx_B0 = 43 - 2x (CCR0)
+    VEC_TIMER0_B0 = 43,
+};
+
+// Timer_B register blocks: TB0-TB2 have CCR0-CCR2, TB3 has CCR0-CCR6
+static const uint16_t TB_BASE[4] = {0x0380, 0x03C0, 0x0400, 0x0440};
+static const int TB_CCRS[4] = {3, 3, 3, 7};
+static const uint16_t TB_SIZE = 0x30;
+
+// Timer outputs and capture inputs on the TSSOP-38's pins (datasheet tables 6-63, 6-64, 6-67).
+// sel is (PxSEL1 << 1) | PxSEL0. TB3's pins are on port 6, which this package doesn't have.
+static const struct {
+    int port, bit, sel, timer, ccr;
+} TB_PINS[] = {
+    {1, 6, 2, 0, 1}, {1, 7, 2, 0, 2}, {2, 0, 1, 1, 1}, {2, 1, 1, 1, 2}, {5, 0, 1, 2, 1}, {5, 1, 1, 2, 2},
 };
 
 // Port register offsets from the pair's base (PxIN at +0 for odd ports, +1 for even ports)
@@ -111,6 +126,8 @@ Fr2355::Fr2355(void) {
     memset(pin_driven, 0, sizeof(pin_driven));
     tick_hz = 8e6;
     reset_pin = 1;
+    for (int t = 0; t < 4; t++)
+        tb[t].Init(TB_BASE[t], TB_CCRS[t]);
     PowerOnReset();
 }
 
@@ -171,6 +188,9 @@ void Fr2355::Puc(uint16_t reset_cause) {
     vlo_hz = 10000;
     mclk_owed = 0;
     clk_sr = 0;
+
+    for (int t = 0; t < 4; t++)
+        tb[t].Reset();
 
     // Hardware multiplier
     for (int a = MPY; a <= MPY32CTL0 + 1; a++)
@@ -262,6 +282,10 @@ void Fr2355::BusError(void* bus, const char* message) {
 uint16_t Fr2355::ReadReg16(uint16_t addr) {
     if (addr >= MPY && addr <= MPY32CTL0)
         return MpyRead(addr);
+    for (int t = 0; t < 4; t++) {
+        if (addr >= TB_BASE[t] && addr < TB_BASE[t] + TB_SIZE)
+            return tb[t].Read(addr - TB_BASE[t]);
+    }
     switch (addr) {
         case WDTCTL:
             return (Reg16(WDTCTL) & 0x00FF) | 0x6900;
@@ -354,6 +378,14 @@ void Fr2355::WriteReg16(uint16_t addr, uint16_t value) {
         MpyWrite(addr, value, 0);
         return;
     }
+    for (int t = 0; t < 4; t++) {
+        if (addr >= TB_BASE[t] && addr < TB_BASE[t] + TB_SIZE) {
+            tb[t].Write(addr - TB_BASE[t], value);
+            if (tb[t].TakeOutputChanged())
+                UpdatePins();
+            return;
+        }
+    }
     SetReg16(addr, value);
     if (addr >= 0x0200 && addr < 0x0260)
         UpdatePins();
@@ -397,6 +429,13 @@ void Fr2355::WriteReg8(uint16_t addr, uint8_t value) {
                 return;
             WriteReg16(word, (ReadReg16(word) & 0xFF00) | value);
             return;
+    }
+    for (int t = 0; t < 4; t++) {
+        if (word >= TB_BASE[t] && word < TB_BASE[t] + TB_SIZE) {
+            uint16_t old = tb[t].Read(word - TB_BASE[t]);
+            WriteReg16(word, (addr & 1) ? (old & 0x00FF) | (value << 8) : (old & 0xFF00) | value);
+            return;
+        }
     }
     if (word >= MPY && word <= MPY32CTL0) {
         if (addr & 1)  // high byte: merge into the word without the operand extension byte writes get
@@ -462,6 +501,8 @@ void Fr2355::UpdatePins(void) {
             } else if (dir && !sel && !locked) {
                 out = 1;
                 level = (PortReg(p.port, P_OUT) & mask) != 0;
+            } else if (dir && sel && !locked && PeripheralOutput(p.port, p.bit, &level)) {
+                out = 1;
             } else if (pin_driven[i]) {
                 out = 0;
                 level = pin_ext[i];
@@ -476,6 +517,14 @@ void Fr2355::UpdatePins(void) {
             pin_level[i] = level;
             pin_out[i] = out;
             io_updated = 1;
+        }
+        // Timer capture inputs (CCIxA) see the pin when it's selected for the timer and is an input
+        if (p.port && !out) {
+            int sel = ((PortReg(p.port, P_SEL1) >> p.bit) & 1) << 1 | ((PortReg(p.port, P_SEL0) >> p.bit) & 1);
+            for (auto& tp : TB_PINS) {
+                if (tp.port == p.port && tp.bit == p.bit && tp.sel == sel)
+                    tb[tp.timer].SetCaptureInput(tp.ccr, level);
+            }
         }
     }
 
@@ -498,6 +547,18 @@ void Fr2355::UpdatePins(void) {
         }
         port_in_last[port - 1] = in;
     }
+}
+
+// The level a peripheral drives onto a port pin selected for it, if any.
+int Fr2355::PeripheralOutput(int port, int bit, uint8_t* level) {
+    int sel = ((PortReg(port, P_SEL1) >> bit) & 1) << 1 | ((PortReg(port, P_SEL0) >> bit) & 1);
+    for (auto& tp : TB_PINS) {
+        if (tp.port == port && tp.bit == bit && tp.sel == sel) {
+            *level = tb[tp.timer].Out(tp.ccr);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int Fr2355::GetPinLevel(int pin) const {
@@ -772,6 +833,12 @@ void Fr2355::WakeLpm5(void) {
 
 // Highest-priority pending, enabled maskable interrupt vector number, or -1.
 int Fr2355::PendingInterrupt(void) {
+    for (int t = 0; t < 4; t++) {
+        if (tb[t].Ccr0Pending())
+            return VEC_TIMER0_B0 - 2 * t;
+        if (tb[t].SharedPending())
+            return VEC_TIMER0_B0 - 1 - 2 * t;
+    }
     if ((regs[SFRIFG1] & WDTIFG) && (regs[SFRIE1] & WDTIE))
         return VEC_WDT;
     for (int port = 1; port <= 4; port++) {
@@ -785,6 +852,9 @@ int Fr2355::PendingInterrupt(void) {
 void Fr2355::AcknowledgeInterrupt(int vector) {
     if (vector == VEC_WDT)
         regs[SFRIFG1] &= ~WDTIFG;
+    // CCR0 has a vector of its own, so taking it clears its flag; the shared vectors clear through TBxIV
+    if (vector >= VEC_TIMER3_B1 && vector <= VEC_TIMER0_B0 && (VEC_TIMER0_B0 - vector) % 2 == 0)
+        tb[(VEC_TIMER0_B0 - vector) / 2].AcknowledgeCcr0();
 }
 
 void Fr2355::RunCpu(void) {
@@ -844,6 +914,13 @@ void Fr2355::Tick(void) {
     double smclk = (sr & MSP430_SR_SCG1) ? 0 : smclk_hz;
     double aclk = (sr & MSP430_SR_OSCOFF) ? 0 : aclk_hz;
     WdtTick(smclk / tick_hz, aclk / tick_hz, vlo_hz / tick_hz);
+    int outputs = 0;
+    for (int t = 0; t < 4; t++) {
+        tb[t].Advance(aclk / tick_hz, smclk / tick_hz);
+        outputs |= tb[t].TakeOutputChanged();
+    }
+    if (outputs)
+        UpdatePins();
 }
 
 /* ------------------------------------------------------------------------------------------------ */

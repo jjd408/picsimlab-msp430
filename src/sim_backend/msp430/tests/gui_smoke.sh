@@ -9,6 +9,12 @@ hex=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 shift
 log="$root/run/home/.picsimlab/picsimlab_log0.txt"
 export DISPLAY=${DISPLAY:-:0.0}
+for p in $(pgrep -x picsimlab); do
+    if [ "$(readlink /proc/$p/exe)" = "$root/run/bin/picsimlab" ]; then
+        echo "A test PICSimLab is already running (pid $p); close it first."
+        exit 1
+    fi
+done
 rm -f "$log"
 "$root/run.sh" MSP430_Board MSP430FR2355 "$hex" >/dev/null 2>&1 &
 port=""
@@ -17,7 +23,11 @@ for i in $(seq 1 60); do
     port=$(sed -n 's/^PICSimLab: Remote Control Port \([0-9]*\).*/\1/p' "$log" 2>/dev/null | head -1)
     [ -n "$port" ] && break
 done
-[ -n "$port" ] || { echo "PICSimLab didn't start"; exit 1; }
+if [ -z "$port" ]; then
+    echo "PICSimLab didn't start; its log ends:"
+    tail -5 "$log" 2>/dev/null | sed 's/^/    /'
+    exit 1
+fi
 sleep 2
 for cmd in "$@"; do
     case "$cmd" in

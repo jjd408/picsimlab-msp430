@@ -14,8 +14,11 @@ build mpy_none mpy.c -mhwmult=none
 build mpy_f5series mpy.c -mhwmult=f5series
 build clocks clocks.c
 build lpm45 lpm45.c
+build timers timers.c
+build updown updown.c
+build timers_lpm3 timers.c -DSLEEP=LPM3_bits
 gcc -std=c99 -O2 -c ../msp430_cpu.c -o msp430_cpu.o
-g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc msp430_cpu.o
+g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc msp430_cpu.o
 
 fail=0
 check() {  # name, expected line, command...
@@ -70,4 +73,22 @@ check "lpm45: pin held in LPMx.5" "pin 7 (P1.0) at 0.400 s: 1 (in LPMx.5)" \
 p=$(addr lpm45.elf wake_p1ifg)
 check "lpm45: wake-up cause, flags, boots" "$p: 0002 8100 0008 0002" \
     ./msp430_run lpm45.hex --seconds 1 --tick 1e6 --pin 6=0@0.5 --peek $p:4
+
+# --- Step 3: Timer_B
+# TB2.1 toggling on ACLK every 273 counts is the handheld's EXTCOMIN: 60 Hz, 120 edges a second, in LPM0.
+check "timers: EXTCOMIN 60 Hz on P5.0 (TB2.1)" "pin 37 (P5.0): 120 edges" \
+    ./msp430_run timers.hex --seconds 1 --tick 4e6 --edges 37
+check "timers: 25% PWM on P2.0 (TB1.1, reset/set)" "pin 27 (P2.0): high 25.1% of the time" \
+    ./msp430_run timers.hex --seconds 1 --tick 4e6 --duty 27@0.1
+# results[]: TB0 CCR0 at 10 Hz (the 10th lands just after 1 s), TB3 CCR1 and TBIFG at 100 Hz through TB3IV
+# (the 100th wrap lands just after 1 s), the TB0R captured on a P1.6 rising edge at 0.5 s (16384 counts
+# less the 7 before the timer started), one capture.
+r=$(addr timers.elf results)
+check "timers: CCR0 and TBxIV interrupts, capture" "$r: 0009 0064 0063 3FF9 0001 600D" \
+    ./msp430_run timers.hex --seconds 1 --tick 4e6 --pin 29=0@0 --pin 29=1@0.5 --peek $r:6
+check "updown: up/down mode, toggle/set output, CLLD" "pin 27 (P2.0): high 75.0% of the time" \
+    ./msp430_run updown.hex --seconds 0.5 --tick 4e6 --duty 27@0.05
+# In LPM3, as the handheld will sleep, ACLK keeps EXTCOMIN going.
+check "timers: EXTCOMIN keeps running in LPM3" "pin 37 (P5.0): 120 edges" \
+    ./msp430_run timers_lpm3.hex --seconds 1 --tick 4e6 --edges 37
 exit $fail

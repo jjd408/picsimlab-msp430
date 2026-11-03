@@ -2,10 +2,12 @@
  *
  *   msp430_run firmware.hex [--seconds S] [--tick HZ] [--pin PIN=LEVEL@TIME]... [--peek ADDR:WORDS]...
  *              [--edges PIN]... [--peek32 ADDR:N]... [--peek64 ADDR:N]... [--sample PIN@TIME]...
+ *              [--duty PIN@FROM]...
  *
  * --pin drives a package pin from outside at a simulated time (seconds), as a PICSimLab part would.
  * --peek prints 16-bit words of memory at the end (--peek32/--peek64: 32- or 64-bit values). --edges counts
- * level changes on a pin; --sample prints a pin's level at a time.
+ * level changes on a pin; --sample prints a pin's level at a time; --duty prints the fraction of time a pin
+ * was high from a start time (seconds) to the end.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +32,7 @@ int main(int argc, char** argv) {
     std::vector<std::pair<unsigned, int>> peeks;
     std::vector<int> edge_pins;
     std::vector<std::pair<unsigned, int>> peeks32, peeks64;
-    std::vector<PinEvent> samples;
+    std::vector<PinEvent> samples, duties;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--seconds") && i + 1 < argc) {
             seconds = atof(argv[++i]);
@@ -67,6 +69,13 @@ int main(int argc, char** argv) {
                 return 2;
             }
             samples.push_back(e);
+        } else if (!strcmp(argv[i], "--duty") && i + 1 < argc) {
+            PinEvent e;
+            if (sscanf(argv[++i], "%d@%lf", &e.pin, &e.time) != 2) {
+                fprintf(stderr, "bad --duty %s\n", argv[i]);
+                return 2;
+            }
+            duties.push_back(e);
         } else if (!strcmp(argv[i], "--edges") && i + 1 < argc) {
             edge_pins.push_back(atoi(argv[++i]));
         } else {
@@ -84,6 +93,7 @@ int main(int argc, char** argv) {
     chip->PowerOnReset();
 
     std::vector<int> last(edge_pins.size()), edges(edge_pins.size());
+    std::vector<long> high(duties.size()), total(duties.size());
     for (size_t k = 0; k < edge_pins.size(); k++)
         last[k] = chip->GetPinLevel(edge_pins[k]);
 
@@ -106,6 +116,12 @@ int main(int argc, char** argv) {
         chip->Tick();
         if (chip->halted)
             break;
+        for (size_t k = 0; k < duties.size(); k++) {
+            if (now >= duties[k].time) {
+                total[k]++;
+                high[k] += chip->GetPinLevel(duties[k].pin);
+            }
+        }
         for (size_t k = 0; k < edge_pins.size(); k++) {
             int level = chip->GetPinLevel(edge_pins[k]);
             if (level != last[k]) {
@@ -124,6 +140,9 @@ int main(int argc, char** argv) {
     for (size_t k = 0; k < edge_pins.size(); k++)
         printf("pin %d (%s): %d edges, now %d\n", edge_pins[k], Fr2355::pins[edge_pins[k] - 1].name, edges[k],
                chip->GetPinLevel(edge_pins[k]));
+    for (size_t k = 0; k < duties.size(); k++)
+        printf("pin %d (%s): high %.1f%% of the time from %.3f s\n", duties[k].pin, Fr2355::pins[duties[k].pin - 1].name,
+               total[k] ? 100.0 * high[k] / total[k] : 0.0, duties[k].time);
     for (auto& p : peeks) {
         printf("%04X:", p.first);
         for (int w = 0; w < p.second; w++) {
