@@ -3,12 +3,15 @@
  *   msp430_run firmware.hex [--seconds S] [--tick HZ] [--pin PIN=LEVEL@TIME]... [--peek ADDR:WORDS]...
  *              [--edges PIN]... [--peek32 ADDR:N]... [--peek64 ADDR:N]... [--sample PIN@TIME]...
  *              [--duty PIN@FROM]... [--spi CLK,DATA,CS,CPOL,CPHA,MSBFIRST]
+ *              [--sharp SCLK,SI,SCS,EXTCOMIN,DISP[,image.pbm]]
  *
  * --pin drives a package pin from outside at a simulated time (seconds), as a PICSimLab part would.
  * --peek prints 16-bit words of memory at the end (--peek32/--peek64: 32- or 64-bit values). --edges counts
  * level changes on a pin; --sample prints a pin's level at a time; --duty prints the fraction of time a pin
  * was high from a start time (seconds) to the end. --spi decodes the bytes on a data pin as an SPI device in
  * that mode would (bits counted while the active-high CS pin is high), to check what the pins carry.
+ * --sharp connects the LS013B7DH05 display model (the PICSimLab part's) to those pins and reports its status;
+ * with a file name it also saves the screen as a PBM image.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +20,7 @@
 #include <vector>
 
 #include "../fr2355.h"
+#include "../../../devices/lcd_ls013b7dh05.h"
 
 struct PinEvent {
     int pin, level;
@@ -36,6 +40,9 @@ int main(int argc, char** argv) {
     std::vector<PinEvent> samples, duties;
     int spi[6] = {0};
     int use_spi = 0;
+    int sharp_pins[5] = {0};
+    char sharp_image[256] = "";
+    lcd_ls013b7dh05* sharp = NULL;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--seconds") && i + 1 < argc) {
             seconds = atof(argv[++i]);
@@ -72,6 +79,13 @@ int main(int argc, char** argv) {
                 return 2;
             }
             samples.push_back(e);
+        } else if (!strcmp(argv[i], "--sharp") && i + 1 < argc) {
+            if (sscanf(argv[++i], "%d,%d,%d,%d,%d,%255s", &sharp_pins[0], &sharp_pins[1], &sharp_pins[2],
+                       &sharp_pins[3], &sharp_pins[4], sharp_image) < 5) {
+                fprintf(stderr, "bad --sharp %s\n", argv[i]);
+                return 2;
+            }
+            sharp = new lcd_ls013b7dh05();
         } else if (!strcmp(argv[i], "--spi") && i + 1 < argc) {
             if (sscanf(argv[++i], "%d,%d,%d,%d,%d,%d", &spi[0], &spi[1], &spi[2], &spi[3], &spi[4], &spi[5]) != 6) {
                 fprintf(stderr, "bad --spi %s\n", argv[i]);
@@ -128,6 +142,11 @@ int main(int argc, char** argv) {
         chip->Tick();
         if (chip->halted)
             break;
+        if (sharp) {
+            sharp->Step(now, chip->GetPinLevel(sharp_pins[0]), chip->GetPinLevel(sharp_pins[1]),
+                        chip->GetPinLevel(sharp_pins[2]), chip->GetPinLevel(sharp_pins[3]),
+                        chip->GetPinLevel(sharp_pins[4]));
+        }
         if (use_spi) {
             // A device samples the edge that ends a byte before chip select rises, which can happen in the
             // same tick: use chip select as it was in the previous tick.
@@ -176,6 +195,25 @@ int main(int argc, char** argv) {
     for (size_t k = 0; k < edge_pins.size(); k++)
         printf("pin %d (%s): %d edges, now %d\n", edge_pins[k], Fr2355::pins[edge_pins[k] - 1].name, edges[k],
                chip->GetPinLevel(edge_pins[k]));
+    if (sharp) {
+        int black = 0;
+        for (int y = 0; y < lcd_ls013b7dh05::H; y++)
+            for (int x = 0; x < lcd_ls013b7dh05::W; x++)
+                black += !sharp->Pixel(x, y);
+        printf("sharp: %ld frames, %ld lines written, EXTCOMIN %.0f Hz, DISP %d, %d black pixels, %s\n",
+               sharp->frames, sharp->lines_written, sharp->com_hz, sharp->Disp(), black,
+               sharp->problem.empty() ? "no timing problems" : sharp->problem.c_str());
+        if (sharp_image[0]) {
+            FILE* f = fopen(sharp_image, "w");
+            fprintf(f, "P1\n%d %d\n", lcd_ls013b7dh05::W, lcd_ls013b7dh05::H);
+            for (int y = 0; y < lcd_ls013b7dh05::H; y++) {
+                for (int x = 0; x < lcd_ls013b7dh05::W; x++)
+                    fputc(sharp->Pixel(x, y) ? '0' : '1', f);
+                fputc('\n', f);
+            }
+            fclose(f);
+        }
+    }
     if (use_spi) {
         printf("spi:");
         for (int b : spi_bytes)

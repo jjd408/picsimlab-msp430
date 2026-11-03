@@ -19,8 +19,12 @@ build updown updown.c
 build timers_lpm3 timers.c -DSLEEP=LPM3_bits
 build spi spi.c
 build spi_m3lsb spi.c -DCFG=UCCKPL
+build sharp sharp.c
+build sharp_nosetup sharp.c -DSCS_SETUP=1
+build sharp_fast sharp.c -DSPI_DIV=4
 gcc -std=c99 -O2 -c ../msp430_cpu.c -o msp430_cpu.o
-g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc ../eusci_b.cc msp430_cpu.o
+g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc ../eusci_b.cc \
+    ../../../devices/lcd_ls013b7dh05.cc msp430_cpu.o
 
 fail=0
 check() {  # name, expected line, command...
@@ -108,4 +112,20 @@ for tick in 4e6 1e6; do
 done
 check "spi: received bytes, loopback, interrupt-driven sends" "$r: 600D 0004 FFFF FFFF FFFF C35A" \
     ./msp430_run spi.hex --seconds 0.2 --tick 4e6 --pin 16=1@0 --peek $r:6
+
+# --- Step 5: the Sharp LS013B7DH05 display (the PICSimLab part's model), wired as on the handheld:
+# SCLK P4.5 (18), SI P4.6 (17), SCS P4.7 (16), EXTCOMIN P5.0 (37), DISP P5.1 (36).
+# sharp.c clears the panel and writes a test picture (border, seven card outlines, checkerboard, diagonal:
+# 2344 black pixels) in one 168-line transfer, then sleeps in LPM3 with EXTCOMIN at 60 Hz.
+SHARP="18,17,16,37,36"
+check "sharp: picture, EXTCOMIN, timing" \
+    "sharp: 2 frames, 168 lines written, EXTCOMIN 60 Hz, DISP 1, 2344 black pixels, no timing problems" \
+    ./msp430_run sharp.hex --seconds 2.1 --tick 8e6 --sharp $SHARP
+./msp430_run sharp.hex --seconds 2.1 --tick 8e6 --sharp $SHARP,sharp.pbm >/dev/null
+check "sharp: picture matches" "$(cat sharp_expected.md5)" md5sum sharp.pbm
+# The model catches what the real panel would object to
+check "sharp: SCS set-up time too short is caught" "the panel needs 6 us (tsSCS)" \
+    ./msp430_run sharp_nosetup.hex --seconds 0.5 --tick 8e6 --sharp $SHARP
+check "sharp: SCLK above 1.1 MHz is caught" "the panel takes at most 1100 kHz" \
+    ./msp430_run sharp_fast.hex --seconds 0.5 --tick 8e6 --sharp $SHARP
 exit $fail

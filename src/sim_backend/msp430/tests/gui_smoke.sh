@@ -3,6 +3,8 @@
 # sends each remaining argument as a command (e.g. info, pins; "sleep N" pauses), then closes the window so
 # PICSimLab exits cleanly (a killed PICSimLab shows a crash report on its next start).
 #   gui_smoke.sh firmware.hex info pins "sleep 1" pins
+# PCF=parts.pcf loads spare parts (e.g. sharp.pcf: the display on the handheld's pins); SHOT=name saves a
+# screenshot of each PICSimLab window as name-N.png before closing.
 set -e
 root=$(cd "$(dirname "$0")/../../../.." && pwd)
 hex=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -16,7 +18,12 @@ for p in $(pgrep -x picsimlab); do
     fi
 done
 rm -f "$log"
-"$root/run.sh" MSP430_Board MSP430FR2355 "$hex" >/dev/null 2>&1 &
+if [ -n "$PCF" ]; then
+    pcf=$(cd "$(dirname "$PCF")" && pwd)/$(basename "$PCF")
+    "$root/run.sh" MSP430_Board MSP430FR2355 "$hex" "$pcf" >/dev/null 2>&1 &
+else
+    "$root/run.sh" MSP430_Board MSP430FR2355 "$hex" >/dev/null 2>&1 &
+fi
 port=""
 for i in $(seq 1 60); do
     sleep 1
@@ -49,6 +56,13 @@ PY
         ;;
     esac
 done
+if [ -n "$SHOT" ]; then
+    n=0
+    for w in $(wmctrl -l | awk '/PICSimLab/ { print $1 }'); do
+        n=$((n + 1))
+        timeout 10 import -window "$w" "$SHOT-$n.png" && echo "screenshot $SHOT-$n.png: $(wmctrl -l | awk -v w=$w '$1 == w { $1 = $2 = $3 = ""; print }')"
+    done
+fi
 win=$(wmctrl -l | awk '/PICSimLab - MSP430 Board/ { print $1; exit }')
 [ -n "$win" ] && wmctrl -i -c "$win"
 for i in $(seq 1 20); do

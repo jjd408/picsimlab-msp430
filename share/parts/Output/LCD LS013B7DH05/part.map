@@ -1,0 +1,14 @@
+<img src="part.png" width="340" height="488" border="0" usemap="#map" />
+
+<map name="map">
+<area shape="rect" coords="26,26,314,362" href="O_DS_LCD" />
+<area shape="rect" coords="16,370,324,390" href="O_ST_STATUS" />
+<area shape="rect" coords="22,398,48,460" href="O_PN_1" />
+<area shape="rect" coords="60,398,86,460" href="O_PN_2" />
+<area shape="rect" coords="98,398,124,460" href="O_PN_3" />
+<area shape="rect" coords="136,398,162,460" href="O_PN_4" />
+<area shape="rect" coords="174,398,200,460" href="O_PN_5" />
+<area shape="rect" coords="212,398,238,460" href="O_PN_F1" />
+<area shape="rect" coords="250,398,276,460" href="O_PN_F2" />
+<area shape="rect" coords="288,398,314,460" href="O_PN_F3" />
+</map>
