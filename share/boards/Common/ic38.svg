@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="274" height="88" version="1.1" viewBox="0 0 48.460 15.686" xmlns="http://www.w3.org/2000/svg">
+ <rect x="0.096" y="1.092" width="48.260" height="13.462" fill="#333333"/>
+ <path d="m0.096 6.3a1.5 1.5 0 0 1 0 3" fill="#555555"/>
+ <rect x="0.856" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="0.856" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="3.396" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="3.396" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="5.936" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="5.936" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="8.476" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="8.476" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="11.016" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="11.016" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="13.556" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="13.556" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="16.096" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="16.096" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="18.636" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="18.636" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="21.176" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="21.176" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="23.716" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="23.716" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="26.256" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="26.256" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="28.796" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="28.796" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="31.336" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="31.336" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="33.876" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="33.876" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="36.416" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="36.416" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="38.956" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="38.956" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="41.496" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="41.496" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="44.036" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="44.036" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="46.576" y="0" width="1.016" height="1.092" fill="#cccccc"/>
+ <rect x="46.576" y="14.554" width="1.016" height="1.092" fill="#cccccc"/>
+ <circle cx="1.6" cy="12.6" r="0.6" fill="#555555"/>
+</svg>

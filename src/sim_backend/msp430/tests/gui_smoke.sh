@@ -1,0 +1,49 @@
+#!/bin/sh
+# Starts PICSimLab (via run.sh) on the MSP430 board with a firmware file, waits for its remote-control port,
+# sends each remaining argument as a command (e.g. info, pins; "sleep N" pauses), then closes the window so
+# PICSimLab exits cleanly (a killed PICSimLab shows a crash report on its next start).
+#   gui_smoke.sh firmware.hex info pins "sleep 1" pins
+set -e
+root=$(cd "$(dirname "$0")/../../../.." && pwd)
+hex=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+shift
+log="$root/run/home/.picsimlab/picsimlab_log0.txt"
+export DISPLAY=${DISPLAY:-:0.0}
+rm -f "$log"
+"$root/run.sh" MSP430_Board MSP430FR2355 "$hex" >/dev/null 2>&1 &
+port=""
+for i in $(seq 1 60); do
+    sleep 1
+    port=$(sed -n 's/^PICSimLab: Remote Control Port \([0-9]*\).*/\1/p' "$log" 2>/dev/null | head -1)
+    [ -n "$port" ] && break
+done
+[ -n "$port" ] || { echo "PICSimLab didn't start"; exit 1; }
+sleep 2
+for cmd in "$@"; do
+    case "$cmd" in
+        sleep*) $cmd ;;
+        *) python3 -I - "$port" "$cmd" <<'PY'
+import socket, sys, time
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=10)
+time.sleep(0.3)
+s.recv(4096)
+s.sendall((sys.argv[2] + "\n").encode())
+data = b""
+while not data.rstrip().endswith(b">"):
+    chunk = s.recv(65536)
+    if not chunk:
+        break
+    data += chunk
+print(data.decode(errors="replace").replace("\r", "").rstrip(">\n"))
+PY
+        ;;
+    esac
+done
+win=$(wmctrl -l | awk '/PICSimLab - MSP430 Board/ { print $1; exit }')
+[ -n "$win" ] && wmctrl -i -c "$win"
+for i in $(seq 1 20); do
+    grep -q "Finish Ok" "$log" 2>/dev/null && break
+    sleep 0.5
+done
+grep -q "Finish Ok" "$log" && echo "PICSimLab closed cleanly" || echo "PICSimLab didn't close cleanly"
+grep "^msp430:" "$log" || true

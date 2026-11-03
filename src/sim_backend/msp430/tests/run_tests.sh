@@ -1,0 +1,73 @@
+#!/bin/sh
+# Builds the test firmware and the command-line runner, runs each test and compares with expected output.
+set -e
+cd "$(dirname "$0")"
+G=${MSP430_GCC:-$HOME/ti/msp430-gcc}
+CC="$G/bin/msp430-elf-gcc -mmcu=msp430fr2355 -I$G/include -L$G/include -Os -g"
+build() {  # output name, source, extra flags
+    $CC $3 -o $1.elf $2
+    "$G/bin/msp430-elf-objcopy" -O ihex $1.elf $1.hex
+}
+build step1 step1.c -mhwmult=none
+build wdtreset wdtreset.c -mhwmult=none
+build mpy_none mpy.c -mhwmult=none
+build mpy_f5series mpy.c -mhwmult=f5series
+build clocks clocks.c
+build lpm45 lpm45.c
+gcc -std=c99 -O2 -c ../msp430_cpu.c -o msp430_cpu.o
+g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc msp430_cpu.o
+
+fail=0
+check() {  # name, expected line, command...
+    name=$1; expect=$2; shift 2
+    out=$("$@")
+    if echo "$out" | grep -qF -- "$expect"; then
+        echo "pass  $name"
+    else
+        echo "FAIL  $name: expected '$expect' in:"; echo "$out" | sed 's/^/      /'
+        fail=1
+    fi
+}
+addr() {  # symbol address in an .elf, as hex
+    "$G/bin/msp430-elf-nm" $1 | awk -v s=$2 '$3 == s { sub(/^0+/, "", $1); print toupper($1) }'
+}
+
+# --- Step 1: core, ports, watchdog, LPM3
+# results[]: self-check 0x600D, 2 P1.1 interrupts, 8 WDT interrupts (4/s on ACLK), 10 wakes.
+# P1.1 is left undriven at first, so its pull-up must hold it high until the first pulse.
+check "step1: arithmetic, pin interrupts, LPM3, WDT interval" "2000: 600D 0002 0008 000A" \
+    ./msp430_run step1.hex --seconds 2.1 --tick 1e6 --pin 6=0@0.5 --pin 6=1@0.6 --pin 6=0@1.2 --pin 6=1@1.3 \
+    --peek 2000:4
+check "step1: P1.0 toggles on each wake" "pin 7 (P1.0): 10 edges" \
+    ./msp430_run step1.hex --seconds 2.1 --tick 1e6 --pin 6=0@0.5 --pin 6=1@0.6 --pin 6=0@1.2 --pin 6=1@1.3 \
+    --edges 7
+# A watchdog that is never stopped resets every 32768 SMCLK cycles. SMCLK starts at 32 * 32768 Hz
+# = 1.049 MHz, so 1 s holds the first boot and 31 resets (the 32nd falls on the 1 s mark).
+# The last reset cause (SYSRSTIV) is 0x16, a watchdog time-out.
+check "wdtreset: watchdog resets and SYSRSTIV" "8000: 0016 0020" \
+    ./msp430_run wdtreset.hex --seconds 1 --tick 1e6 --peek 8000:2
+
+# --- Step 2: hardware multiplier, clock system, LPMx.5
+# The same products with the MPY32 hardware multiplier and in software must match each other and the
+# values worked out on a PC (uint8 * uint8 is a 16-bit signed int on the MSP430, so 200 * 177 overflows).
+MPY32="0D93968C FF951644 0000968C 760B3D29 874891C0 FFFF8A48 FFFFE1EC D7EAA321 C414A532 8B4021C6 00000D08 00FD5BDE"
+MPY64="00FD5BDE760B3D29 FFFF911A874891C0 451567366448E963"
+for v in none f5series; do
+    out=$(addr mpy_$v.elf out); out64=$(addr mpy_$v.elf out64)
+    check "mpy ($v): 32-bit results" "$out: $MPY32" ./msp430_run mpy_$v.hex --seconds 0.2 --peek32 $out:12
+    check "mpy ($v): 64-bit results" "$out64: $MPY64" ./msp430_run mpy_$v.hex --seconds 0.2 --peek64 $out64:3
+done
+# DCO at 8 MHz: CSCTL7 shows only XT1OFFG (no crystal); SMCLK / 32768 at 4 MHz gives 122 interrupts in a
+# 1 s __delay_cycles (which also checks instruction timing); none while in LPM3, where SMCLK stops.
+r=$(addr clocks.elf results)
+check "clocks: FLL to 8 MHz, SMCLK divider, timing, LPM3 gating" "$r: 0002 007A 0000 600D" \
+    ./msp430_run clocks.hex --seconds 3 --tick 8e6 --pin 6=0@2.5 --peek $r:4
+check "clocks: MCLK frequency" "MCLK=7995392 Hz" ./msp430_run clocks.hex --seconds 0.1 --tick 8e6
+# LPM4.5: P1.0 is held high while the chip is powered down; a P1.1 edge wakes it through a reset with
+# SYSRSTIV 0x08, PMMIFG's LPM5 flag (0x8000, beside the power-on BOR flag 0x0100) and P1IFG.1 set.
+check "lpm45: pin held in LPMx.5" "pin 7 (P1.0) at 0.400 s: 1 (in LPMx.5)" \
+    ./msp430_run lpm45.hex --seconds 1 --tick 1e6 --sample 7@0.4 --pin 6=0@0.5
+p=$(addr lpm45.elf wake_p1ifg)
+check "lpm45: wake-up cause, flags, boots" "$p: 0002 8100 0008 0002" \
+    ./msp430_run lpm45.hex --seconds 1 --tick 1e6 --pin 6=0@0.5 --peek $p:4
+exit $fail

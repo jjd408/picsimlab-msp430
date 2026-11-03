@@ -2150,7 +2150,7 @@ void file_ready(const char* fname, const char* dir) {
     }
 
     if ((arch == ARCH_P16) || (arch == ARCH_P16E) || (arch == ARCH_P18) || (arch == ARCH_AVR8) || (arch == ARCH_C51) ||
-        (arch == ARCH_STM8) || (arch == ARCH_Z80)) {
+        (arch == ARCH_STM8) || (arch == ARCH_Z80) || (arch == ARCH_MSP430)) {
         is_hex = 1;
     }
 

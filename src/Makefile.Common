@@ -8,6 +8,8 @@ OBJS+= $(patsubst lib/%.cc,lib/%.o,$(wildcard lib/*.cc))
 OBJS+= $(patsubst sim_backend/%.cc,sim_backend/%.o,$(wildcard sim_backend/bsim*.cc)) 
 OBJS+= $(patsubst boards/%.cc,boards/%.o,$(wildcard boards/board*.cc)) 
 OBJS+= sim_backend/bridge_gpsim.o
+OBJS+= $(patsubst sim_backend/msp430/%.cc,sim_backend/msp430/%.o,$(wildcard sim_backend/msp430/*.cc))
+OBJS+= $(patsubst sim_backend/msp430/%.c,sim_backend/msp430/%.o,$(wildcard sim_backend/msp430/*.c))
 OBJS+= $(patsubst devices/%.cc,devices/%.o,$(filter-out devices/prog_psp.cc,$(wildcard devices/*.cc)))
 OBJS+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/input*.cc))
 OBJS+= $(patsubst parts/%.cc,parts/%.o,$(wildcard parts/output*.cc))
@@ -36,3 +38,8 @@ sim_backend/bridge_gpsim.o: sim_backend/bridge_gpsim.cc
 	@echo "Compiling $<"
 	@$(CXX) $(CXXFLAGS)  $(PKG_CONFIG)  sim_backend/bridge_gpsim.cc  -c -o sim_backend/bridge_gpsim.o 
 
+
+# The MSP430 CPU core is C (from MSPDebug)
+sim_backend/msp430/%.o: sim_backend/msp430/%.c
+	@echo "Compiling $<"
+	@$(CC) -c -O2 -Wall $< -o $@
