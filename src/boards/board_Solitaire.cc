@@ -249,7 +249,8 @@ void cboard_Solitaire::Draw(void) {
                                  .Rectangle{1, output[i].x1, output[i].y1, output[i].x2 - output[i].x1,
                                             output[i].y2 - output[i].y1}});
             PICSimLab.CanvasCmd({.cmd = CC_SETFONTSIZE, .SetFontSize{8}});
-            if (lcd.problem.empty())
+            // Green only while the panel would be happy: no timing problem and EXTCOMIN at 57-66 Hz
+            if (lcd.problem.empty() && lcd.com_hz >= 57 && lcd.com_hz <= 66)
                 PICSimLab.CanvasCmd({.cmd = CC_SETFGCOLOR, .SetFgColor{160, 220, 160}});
             else
                 PICSimLab.CanvasCmd({.cmd = CC_SETFGCOLOR, .SetFgColor{255, 120, 100}});

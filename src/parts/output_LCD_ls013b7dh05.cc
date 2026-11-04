@@ -139,7 +139,9 @@ void cpart_LCD_ls013b7dh05::DrawOutput(const unsigned int i) {
                                   .Rectangle{1, output[i].x1, output[i].y1, output[i].x2 - output[i].x1,
                                              output[i].y2 - output[i].y1}});
             SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFONTSIZE, .SetFontSize{8}});
-            if (lcd.problem.empty())
+            // Green only while the panel would be happy: no timing problem and, when EXTCOMIN is
+            // connected, it at 57-66 Hz
+            if (lcd.problem.empty() && (!input_pins[3] || (lcd.com_hz >= 57 && lcd.com_hz <= 66)))
                 SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFGCOLOR, .SetFgColor{160, 220, 160}});
             else
                 SpareParts.CanvasCmd({.partn = id, .cmd = CC_SETFGCOLOR, .SetFgColor{255, 120, 100}});
