@@ -3,7 +3,7 @@
  *   msp430_run firmware.hex [--seconds S] [--tick HZ] [--pin PIN=LEVEL@TIME]... [--peek ADDR:WORDS]...
  *              [--edges PIN]... [--peek32 ADDR:N]... [--peek64 ADDR:N]... [--sample PIN@TIME]...
  *              [--duty PIN@FROM]... [--spi CLK,DATA,CS,CPOL,CPHA,MSBFIRST]
- *              [--sharp SCLK,SI,SCS,EXTCOMIN,DISP[,image.pbm]]
+ *              [--sharp SCLK,SI,SCS,EXTCOMIN,DISP[,image.pbm]] [--gdb PORT]
  *
  * --pin drives a package pin from outside at a simulated time (seconds), as a PICSimLab part would; LEVEL z
  * stops driving it (a released switch), leaving it to the pull resistor.
@@ -13,6 +13,9 @@
  * that mode would (bits counted while the active-high CS pin is high), to check what the pins carry.
  * --sharp connects the LS013B7DH05 display model (the PICSimLab part's) to those pins and reports its status;
  * with a file name it also saves the screen as a PBM image.
+ * --gdb waits for a debugger on a TCP port (127.0.0.1) and runs the program under it: simulated time stands
+ * still while the debugger has it stopped, and the run ends after --seconds of running time, or when the
+ * debugger disconnects and the time is up.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +23,12 @@
 
 #include <vector>
 
+#include <chrono>
+#include <thread>
+
 #include "../fr2355.h"
+#include "../gdb_rsp.h"
+#include "../gdb_target.h"
 #include "../../../devices/lcd_ls013b7dh05.h"
 
 struct PinEvent {
@@ -44,6 +52,7 @@ int main(int argc, char** argv) {
     int sharp_pins[5] = {0};
     char sharp_image[256] = "";
     lcd_ls013b7dh05* sharp = NULL;
+    int gdb_port = 0;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--seconds") && i + 1 < argc) {
             seconds = atof(argv[++i]);
@@ -102,6 +111,8 @@ int main(int argc, char** argv) {
                 return 2;
             }
             duties.push_back(e);
+        } else if (!strcmp(argv[i], "--gdb") && i + 1 < argc) {
+            gdb_port = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--edges") && i + 1 < argc) {
             edge_pins.push_back(atoi(argv[++i]));
         } else {
@@ -117,6 +128,27 @@ int main(int argc, char** argv) {
     }
     chip->SetTickHz(tick_hz);
     chip->PowerOnReset();
+
+    Fr2355Target target;
+    target.SetChip(chip);
+    GdbServer* gdb = NULL;
+    if (gdb_port) {
+        gdb = new GdbServer(&target);
+        if (!gdb->Listen(gdb_port)) {
+            fprintf(stderr, "gdb: %s\n", gdb->error.c_str());
+            return 1;
+        }
+        fprintf(stderr, "gdb: waiting on port %d\n", gdb_port);
+        for (int w = 0; w < 3000 && !gdb->Connected(); w++) {
+            gdb->Poll(0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (!gdb->Connected()) {
+            fprintf(stderr, "gdb: no debugger connected\n");
+            return 1;
+        }
+    }
+    const long gdb_poll_every = (long)(tick_hz / 1000) + 1;  // every simulated millisecond
 
     std::vector<int> last(edge_pins.size()), edges(edge_pins.size());
     std::vector<long> high(duties.size()), total(duties.size());
@@ -145,9 +177,20 @@ int main(int argc, char** argv) {
                 e.time = -1;
             }
         }
+        if (gdb) {
+            if (t % gdb_poll_every == 0 || chip->debug_stop)
+                gdb->Poll(0);
+            while (chip->debug_stop && gdb->Connected())
+                gdb->Poll(100);  // stopped: time stands still until the debugger runs it on
+        }
         chip->Tick();
-        if (chip->halted)
+        if (chip->halted) {
+            if (gdb) {
+                while (gdb->Connected())
+                    gdb->Poll(100);  // let the debugger see why
+            }
             break;
+        }
         if (sharp) {
             sharp->Step(now, chip->GetPinLevel(sharp_pins[0]), chip->GetPinLevel(sharp_pins[1]),
                         chip->GetPinLevel(sharp_pins[2]), chip->GetPinLevel(sharp_pins[3]),

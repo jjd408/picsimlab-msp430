@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 #include "msp430_cpu.h"
 #include "eusci_b.h"
@@ -74,6 +75,28 @@ public:
     uint8_t info[0x200];     // 0x1800-0x19FF
     uint8_t regs[0x1000];    // 0x0000-0x0FFF peripheral register file
 
+    // Debugging. A breakpoint stops the CPU before the instruction at its address; a single step stops it
+    // after one instruction (with interrupts held off while the CPU is on, so stepping stays in the code
+    // being stepped); a watchpoint stops it after the instruction that read or wrote its bytes. While
+    // stopped (debug_stop set) the whole chip is frozen: no clocks, timers or pins change.
+    enum { STOP_NONE, STOP_BREAK, STOP_STEP, STOP_WATCH, STOP_HALT };
+    enum { WATCH_WRITE = 1, WATCH_READ = 2 };
+    struct Watch {
+        uint32_t addr, len;
+        int kind;  // WATCH_WRITE, WATCH_READ or both
+    };
+    int debug_stop = STOP_NONE;
+    std::vector<uint32_t> breakpoints;
+    std::vector<Watch> watches;
+    uint32_t watch_addr = 0;  // the address that tripped the last watchpoint stop
+    int watch_kind = 0;       // and how it was touched
+    // Runs on from a stop, for one instruction if step is set. A breakpoint at the current PC is passed over.
+    void DebugResume(int step);
+    // Memory as the CPU sees it, without the side effects of a read (interrupt vectors, receive buffers).
+    uint8_t Peek8(uint32_t addr);
+    // Writes memory for a debugger: FRAM and info memory regardless of their write protection.
+    void Poke8(uint32_t addr, uint8_t value);
+
 private:
     // Memory bus, called by the CPU core.
     static uint8_t BusRead8(void* bus, uint32_t addr);
@@ -82,7 +105,7 @@ private:
     static void BusWrite16(void* bus, uint32_t addr, uint16_t value);
     static void BusError(void* bus, const char* message);
 
-    uint16_t ReadReg16(uint16_t addr);
+    uint16_t ReadReg16(uint16_t addr, bool peek = false);
     void WriteReg16(uint16_t addr, uint16_t value);
     uint8_t ReadReg8(uint16_t addr);
     void PmmCtl0Low(uint8_t value);
@@ -95,6 +118,10 @@ private:
         regs[addr + 1] = value >> 8;
     };
 
+    int debug_step = 0;            // stop after the next instruction
+    int64_t bp_pass = -1;          // a breakpoint address to run over once (the one we stopped at)
+    void CheckWatch(uint32_t addr, int size, int kind);
+
     void Puc(uint16_t reset_cause);
     void RunCpu(void);
     int PendingInterrupt(void);
@@ -106,7 +133,7 @@ private:
     uint8_t PortReg(int port, int reg) const { return regs[PortBase(port) + reg + PortOffset(port)]; };
     void UpdatePins(void);
     int PeripheralOutput(int port, int bit, int dir, uint8_t* level);
-    uint16_t PortIv(int port);
+    uint16_t PortIv(int port, bool peek = false);
 
     TimerB tb[4];
     EusciB ucb[2];

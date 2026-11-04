@@ -60,7 +60,7 @@ void EusciB::SetPin(uint8_t& pin, int level) {
 /* ------------------------------------------------------------------------------------------------ */
 /* Registers                                                                                         */
 
-uint16_t EusciB::Read(uint16_t offset) {
+uint16_t EusciB::Read(uint16_t offset, bool peek) {
     switch (offset) {
         case O_CTLW0:
             return ctlw0;
@@ -71,8 +71,10 @@ uint16_t EusciB::Read(uint16_t offset) {
         case O_STATW:
             return statw;
         case O_RXBUF:
-            ifg &= ~UCRXIFG;  // reading RXBUF clears UCRXIFG and UCOE
-            statw &= ~UCOE;
+            if (!peek) {
+                ifg &= ~UCRXIFG;  // reading RXBUF clears UCRXIFG and UCOE
+                statw &= ~UCOE;
+            }
             return rxbuf;
         case O_TXBUF:
             return txbuf;
@@ -83,11 +85,13 @@ uint16_t EusciB::Read(uint16_t offset) {
         case O_IV:
             // UCRXIFG (2) before UCTXIFG (4); reading clears the flag reported
             if (ie & ifg & UCRXIFG) {
-                ifg &= ~UCRXIFG;
+                if (!peek)
+                    ifg &= ~UCRXIFG;
                 return 0x02;
             }
             if (ie & ifg & UCTXIFG) {
-                ifg &= ~UCTXIFG;
+                if (!peek)
+                    ifg &= ~UCTXIFG;
                 return 0x04;
             }
             return 0;

@@ -28,24 +28,30 @@
 
 #include "../lib/board.h"
 #include "msp430/fr2355.h"
+#include "msp430/gdb_rsp.h"
+#include "msp430/gdb_target.h"
 
 // Simulation backend for TI MSP430FR2355 microcontrollers, using the MSP430X core adapted from MSPDebug's
 // simulator and the chip model in msp430/fr2355.cc. One MStep is one simulation tick of 1 / clock seconds;
 // the chip runs its own MCLK, so the clock setting is the simulation's time resolution, not the CPU speed.
+// With PICSimLab's debugging on, a GDB server listens on its debug port (1234): see msp430/gdb_rsp.h.
 class bsim_msp430 : virtual public board {
 public:
     bsim_msp430(void);
     ~bsim_msp430(void);
     int DebugInit(int dtyppe) override;
-    std::string GetDebugName(void) override { return "none"; };
-    void DebugLoop(void) override {};
+    std::string GetDebugName(void) override { return "GDB"; };
+    void DebugLoop(void) override;
+    // Set while the debugger has the program stopped; boards stop their simulation time then.
+    int DbgStopped(void) const { return chip && chip->debug_stop; };
+
     int CpuInitialized(void) override { return chip != NULL; };
     void MSetSerial(const char* port) override {};
     int MInit(const char* processor, const char* fname, float freq) override;
     void MEnd(void) override;
     int MGetArchitecture(void) override { return ARCH_MSP430; };
     std ::string GetSimBackends(void) override { return "MSP430 (MSPDebug core),"; };
-    std ::string GetDebuggers(void) override { return "none,"; };
+    std ::string GetDebuggers(void) override { return "GDB,"; };
     int MDumpMemory(const char* fname) override;
     void MEraseFlash(void) override;
     void MSetFreq(float freq) override;
@@ -78,6 +84,8 @@ protected:
     void pins_reset(void);
     void pins_sync(void);
     Fr2355* chip;
+    GdbServer* gdb;
+    Fr2355Target gdb_target;
     picpin pins[MAX_PIN_COUNT];
     float freq;
 };

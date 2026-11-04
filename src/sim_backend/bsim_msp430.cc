@@ -29,11 +29,13 @@
 
 bsim_msp430::bsim_msp430(void) {
     chip = NULL;
+    gdb = NULL;
     freq = 8e6;
     memset(pins, 0, sizeof(pins));
 }
 
 bsim_msp430::~bsim_msp430(void) {
+    delete gdb;
     MEnd();
 }
 
@@ -66,6 +68,7 @@ int bsim_msp430::MInit(const char* processor, const char* fname, float freq_) {
 void bsim_msp430::MEnd(void) {
     delete chip;
     chip = NULL;
+    gdb_target.SetChip(NULL);
 }
 
 int bsim_msp430::MDumpMemory(const char* fname) {
@@ -90,8 +93,28 @@ void bsim_msp430::MSetFreq(float freq_) {
     TimerUpdateFrequency(freq);
 }
 
+/* ------------------------------------------------------------------------------------------------ */
+/* Debugging: a GDB server on PICSimLab's debug port                                                 */
+
 int bsim_msp430::DebugInit(int dtyppe) {
-    return 0;
+    if (!gdb) {
+        gdb = new GdbServer(&gdb_target);
+        gdb_target.changed = [this]() { pins_sync(); };
+    }
+    gdb_target.SetChip(chip);
+    if (!gdb->Listen(PICSimLab.GetDebugPort())) {
+        PICSimLab.RegisterError("PICSimLab", "Can't start the GDB server: " + gdb->error);
+        return -1;
+    }
+    printf("PICSimLab: MSP430 GDB server on port %i (target remote :%i)\n", gdb->Port(), gdb->Port());
+    return 1;
+}
+
+void bsim_msp430::DebugLoop(void) {
+    if (gdb && chip) {
+        gdb_target.SetChip(chip);  // the chip is made anew when a program is loaded
+        gdb->Poll(50);
+    }
 }
 
 std::string bsim_msp430::MGetPinName(int pin) {

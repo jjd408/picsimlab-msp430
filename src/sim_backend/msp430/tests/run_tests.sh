@@ -23,8 +23,9 @@ build sharp sharp.c
 build sharp_nosetup sharp.c -DSCS_SETUP=1
 build sharp_fast sharp.c -DSPI_DIV=4
 build buttons buttons.c
+build gdbtest gdbtest.c -O1
 gcc -std=c99 -O2 -c ../msp430_cpu.c -o msp430_cpu.o
-g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc ../eusci_b.cc \
+g++ -std=c++17 -O2 -Wall -o msp430_run msp430_run.cc ../fr2355.cc ../timer_b.cc ../eusci_b.cc ../gdb_rsp.cc ../gdb_target.cc \
     ../../../devices/lcd_ls013b7dh05.cc msp430_cpu.o
 
 fail=0
@@ -141,4 +142,27 @@ check "buttons: display redrawn on each edge" "sharp: 6 frames, 840 lines writte
     ./msp430_run buttons.hex --seconds 1.5 --tick 8e6 $BUTTONS --sharp $SHARP
 ./msp430_run buttons.hex --seconds 1.5 --tick 8e6 $BUTTONS --sharp $SHARP,buttons.pbm >/dev/null
 check "buttons: screen shows the held buttons" "$(cat buttons_expected.md5)" md5sum buttons.pbm
+# --- Debugging: the GDB server, as PICSimLab's MSP430 backend runs it (here through msp430_run --gdb).
+# TI's gdb sets breakpoints in add3 (R12 holds its argument: 0, then 3), a watchpoint on `last` (3 -> 6),
+# steps, changes a variable (counter = 100 reaches add3), runs a monitor command and detaches.
+GDB=../../../../tools/msp430-gdb
+if $GDB --version >/dev/null 2>&1; then
+    timeout 60 ./msp430_run gdbtest.hex --seconds 0.01 --tick 8e6 --gdb 2331 >/dev/null 2>&1 &
+    out=$(timeout 60 $GDB -batch -nx -x gdbtest.gdb gdbtest.elf 2>&1)
+    wait
+    check "gdb: breakpoint, argument register" '$2 = 0' printf '%s\n' "$out"
+    check "gdb: continue to the breakpoint again" '$3 = 3' printf '%s\n' "$out"
+    check "gdb: watchpoint on a write" 'New value = 6' printf '%s\n' "$out"
+    check "gdb: set a variable, run on" '$6 = 100' printf '%s\n' "$out"
+    check "gdb: monitor command" 'MCLK cycles since power-on' printf '%s\n' "$out"
+    check "gdb: detach" 'detached' printf '%s\n' "$out"
+    # Ctrl-C stops a running program; reading SYSRSTIV for the debugger doesn't clear the reset cause
+    timeout 60 ./msp430_run gdbtest.hex --seconds 3 --tick 1e6 --gdb 2332 >/dev/null 2>&1 &
+    out=$(timeout 30 python3 rsp_interrupt.py 2332 2>&1)
+    wait
+    check "gdb: interrupt stops the program" 'after ctrl-c: T02' printf '%s\n' "$out"
+    check "gdb: peeks have no side effects" 'sysrstiv peeks equal: True' printf '%s\n' "$out"
+else
+    echo "skip  gdb: TI's msp430-elf-gdb doesn't run here"
+fi
 exit $fail

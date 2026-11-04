@@ -150,6 +150,7 @@ Fr2355::Fr2355(void) {
 /* Reset                                                                                             */
 
 void Fr2355::PowerOnReset(void) {
+    cycle_count = 0;
     memset(regs, 0, sizeof(regs));
     memset(pin_level, 0, sizeof(pin_level));
     memset(pin_out, 0, sizeof(pin_out));
@@ -245,6 +246,8 @@ void Fr2355::SetResetPin(int level) {
 
 uint8_t Fr2355::BusRead8(void* bus, uint32_t addr) {
     Fr2355* chip = (Fr2355*)bus;
+    if (!chip->watches.empty())
+        chip->CheckWatch(addr, 1, WATCH_READ);
     if (addr < 0x1000)
         return chip->ReadReg8(addr);
     if (addr >= 0x2000 && addr < 0x3000)
@@ -258,13 +261,18 @@ uint8_t Fr2355::BusRead8(void* bus, uint32_t addr) {
 
 uint16_t Fr2355::BusRead16(void* bus, uint32_t addr) {
     Fr2355* chip = (Fr2355*)bus;
-    if (addr < 0x1000)
+    if (addr < 0x1000) {
+        if (!chip->watches.empty())
+            chip->CheckWatch(addr, 2, WATCH_READ);
         return chip->ReadReg16(addr);
+    }
     return BusRead8(bus, addr) | (BusRead8(bus, addr + 1) << 8);
 }
 
 void Fr2355::BusWrite8(void* bus, uint32_t addr, uint8_t value) {
     Fr2355* chip = (Fr2355*)bus;
+    if (!chip->watches.empty())
+        chip->CheckWatch(addr, 1, WATCH_WRITE);
     if (addr < 0x1000) {
         chip->WriteReg8(addr, value);
     } else if (addr >= 0x2000 && addr < 0x3000) {
@@ -281,11 +289,59 @@ void Fr2355::BusWrite8(void* bus, uint32_t addr, uint8_t value) {
 void Fr2355::BusWrite16(void* bus, uint32_t addr, uint16_t value) {
     Fr2355* chip = (Fr2355*)bus;
     if (addr < 0x1000) {
+        if (!chip->watches.empty())
+            chip->CheckWatch(addr, 2, WATCH_WRITE);
         chip->WriteReg16(addr, value);
     } else {
         BusWrite8(bus, addr, value);
         BusWrite8(bus, addr + 1, value >> 8);
     }
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Debugging                                                                                         */
+
+void Fr2355::CheckWatch(uint32_t addr, int size, int kind) {
+    for (const Watch& w : watches) {
+        if ((w.kind & kind) && addr < w.addr + w.len && addr + size > w.addr) {
+            if (!watch_kind) {  // the first access an instruction makes is the one reported
+                watch_addr = w.addr;
+                watch_kind = kind;
+            }
+            return;
+        }
+    }
+}
+
+void Fr2355::DebugResume(int step) {
+    bp_pass = cpu.regs[MSP430_REG_PC];
+    debug_step = step;
+    debug_stop = STOP_NONE;
+}
+
+uint8_t Fr2355::Peek8(uint32_t addr) {
+    if (addr < 0x1000) {
+        uint16_t word = ReadReg16(addr & ~1, true);
+        return (addr & 1) ? word >> 8 : word & 0xFF;
+    }
+    if (addr >= 0x2000 && addr < 0x3000)
+        return ram[addr - 0x2000];
+    if (addr >= 0x8000 && addr < 0x10000)
+        return fram[addr - 0x8000];
+    if (addr >= 0x1800 && addr < 0x1A00)
+        return info[addr - 0x1800];
+    return 0xFF;
+}
+
+void Fr2355::Poke8(uint32_t addr, uint8_t value) {
+    if (addr < 0x1000)
+        WriteReg8(addr, value);
+    else if (addr >= 0x2000 && addr < 0x3000)
+        ram[addr - 0x2000] = value;
+    else if (addr >= 0x8000 && addr < 0x10000)
+        fram[addr - 0x8000] = value;
+    else if (addr >= 0x1800 && addr < 0x1A00)
+        info[addr - 0x1800] = value;
 }
 
 void Fr2355::BusError(void* bus, const char* message) {
@@ -296,16 +352,16 @@ void Fr2355::BusError(void* bus, const char* message) {
 /* ------------------------------------------------------------------------------------------------ */
 /* Peripheral registers                                                                              */
 
-uint16_t Fr2355::ReadReg16(uint16_t addr) {
+uint16_t Fr2355::ReadReg16(uint16_t addr, bool peek) {
     if (addr >= MPY && addr <= MPY32CTL0)
         return MpyRead(addr);
     for (int t = 0; t < 4; t++) {
         if (addr >= TB_BASE[t] && addr < TB_BASE[t] + TB_SIZE)
-            return tb[t].Read(addr - TB_BASE[t]);
+            return tb[t].Read(addr - TB_BASE[t], peek);
     }
     for (int u = 0; u < 2; u++) {
         if (addr >= UCB_BASE[u] && addr < UCB_BASE[u] + UCB_SIZE)
-            return ucb[u].Read(addr - UCB_BASE[u]);
+            return ucb[u].Read(addr - UCB_BASE[u], peek);
     }
     switch (addr) {
         case WDTCTL:
@@ -317,7 +373,8 @@ uint16_t Fr2355::ReadReg16(uint16_t addr) {
         case SYSRSTIV: {
             for (int n = 1; n < 32; n++) {
                 if (rst_pending & (1u << n)) {
-                    rst_pending &= ~(1u << n);
+                    if (!peek)
+                        rst_pending &= ~(1u << n);
                     return n * 2;
                 }
             }
@@ -326,7 +383,7 @@ uint16_t Fr2355::ReadReg16(uint16_t addr) {
     }
     for (int port = 1; port <= 4; port++) {
         if (addr == PortBase(port) + 0x0E + (port % 2 ? 0 : 0x10))
-            return PortIv(port);
+            return PortIv(port, peek);
     }
     return Reg16(addr);
 }
@@ -502,12 +559,13 @@ int Fr2355::PortOffset(int port) {
 }
 
 // PxIV: 2 * (n + 1) for the lowest pending, enabled bit n, which reading clears.
-uint16_t Fr2355::PortIv(int port) {
+uint16_t Fr2355::PortIv(int port, bool peek) {
     uint16_t ifg_addr = PortBase(port) + P_IFG + PortOffset(port);
     uint8_t pending = regs[ifg_addr] & PortReg(port, P_IE);
     for (int n = 0; n < 8; n++) {
         if (pending & (1 << n)) {
-            regs[ifg_addr] &= ~(1 << n);
+            if (!peek)
+                regs[ifg_addr] &= ~(1 << n);
             return 2 * (n + 1);
         }
     }
@@ -943,7 +1001,11 @@ void Fr2355::RunCpu(void) {
     }
     mclk_owed += mclk_hz / tick_hz;
     while (mclk_owed > 0) {
-        int vector = (cpu.regs[MSP430_REG_SR] & MSP430_SR_GIE) ? PendingInterrupt() : -1;
+        if (debug_stop)
+            break;
+        // A single step holds interrupts off, unless the CPU is asleep and only an interrupt can wake it
+        int stepping = debug_step && !(cpu.regs[MSP430_REG_SR] & MSP430_SR_CPUOFF);
+        int vector = ((cpu.regs[MSP430_REG_SR] & MSP430_SR_GIE) && !stepping) ? PendingInterrupt() : -1;
         int cycles;
         if (vector >= 0) {
             cycles = msp430_cpu_interrupt(&cpu, 0xFFA2 + 2 * vector);
@@ -955,12 +1017,31 @@ void Fr2355::RunCpu(void) {
                 EnterLpm5();
             break;
         } else {
+            uint32_t pc = cpu.regs[MSP430_REG_PC];
+            if (!breakpoints.empty() && (int64_t)pc != bp_pass) {
+                for (uint32_t b : breakpoints) {
+                    if (b == pc) {
+                        debug_stop = STOP_BREAK;
+                        break;
+                    }
+                }
+                if (debug_stop)
+                    break;
+            }
+            bp_pass = -1;
+            watch_kind = 0;
             cycles = msp430_cpu_step(&cpu);
             if (cycles < 0) {
                 halted = 1;
                 fprintf(stderr, "msp430: %s\n", error.c_str());
                 return;
             }
+            if (debug_step) {
+                debug_step = 0;
+                debug_stop = STOP_STEP;
+            }
+            if (watch_kind)
+                debug_stop = STOP_WATCH;
         }
         mclk_owed -= cycles;
         cycle_count += cycles;
@@ -968,6 +1049,8 @@ void Fr2355::RunCpu(void) {
 }
 
 void Fr2355::Tick(void) {
+    if (debug_stop)
+        return;  // stopped by the debugger: the whole chip waits
     if (!reset_pin)
         return;
     if (lpm5_active) {

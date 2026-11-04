@@ -22,7 +22,7 @@ public:
     void Init(uint16_t base, const char* name);
     void Reset(void);
 
-    uint16_t Read(uint16_t offset);
+    uint16_t Read(uint16_t offset, bool peek = false);
     void Write(uint16_t offset, uint16_t value);
 
     // Advances by the given ACLK and SMCLK periods (fractional) within one simulation tick.

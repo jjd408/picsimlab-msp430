@@ -39,7 +39,7 @@ uint32_t TimerB::Max(void) const {
 /* ------------------------------------------------------------------------------------------------ */
 /* Registers                                                                                         */
 
-uint16_t TimerB::Read(uint16_t offset) {
+uint16_t TimerB::Read(uint16_t offset, bool peek) {
     if (offset == O_CTL)
         return ctl;
     if (offset == O_R)
@@ -53,15 +53,18 @@ uint16_t TimerB::Read(uint16_t offset) {
     if (offset >= O_CCR0 && offset < O_CCR0 + 2 * ccrs)
         return ccr[(offset - O_CCR0) / 2];
     if (offset == O_IV) {
-        // Highest-priority pending, enabled source: CCR1 (2) ... CCR6 (0x0C), then TBIFG (0x0E). Reading clears it.
+        // Highest-priority pending, enabled source: CCR1 (2) ... CCR6 (0x0C), then TBIFG (0x0E). Reading clears
+        // it (unless a debugger is only peeking).
         for (int n = 1; n < ccrs; n++) {
             if ((cctl[n] & CCIE) && (cctl[n] & CCIFG)) {
-                cctl[n] &= ~CCIFG;
+                if (!peek)
+                    cctl[n] &= ~CCIFG;
                 return 2 * n;
             }
         }
         if ((ctl & TBIE) && (ctl & TBIFG)) {
-            ctl &= ~TBIFG;
+            if (!peek)
+                ctl &= ~TBIFG;
             return 0x0E;
         }
         return 0;

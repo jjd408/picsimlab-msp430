@@ -320,8 +320,9 @@ void cboard_MSP430_Board::Run_CPU(void) {
              {
              }
              */
-            // verify if a breakpoint is reached if not run
-            // one instruction
+            // stopped by the debugger: time stands still
+            if (DbgStopped())
+                break;
             MStep();
             InstCounterInc();
             // Oscilloscope window process

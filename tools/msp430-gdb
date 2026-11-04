@@ -1,0 +1,24 @@
+#!/bin/sh
+# Runs TI's msp430-elf-gdb, e.g.:  tools/msp430-gdb fw.elf -ex "target remote :1234"
+#
+# TI's gdb (MSP430-GCC 9.3.1.11) was linked against ncurses 5, which current distributions no longer ship
+# (Debian 13 has only libncursesw.so.6 and libtinfo.so.6). Its calls are the same in version 6, so this
+# points the old names at the new libraries in a private folder, leaving the system and TI's install alone.
+PATH=$PATH:/sbin:/usr/sbin  # ldconfig
+G=${MSP430_GCC:-$HOME/ti/msp430-gcc}
+GDB="$G/bin/msp430-elf-gdb"
+[ -x "$GDB" ] || { echo "msp430-gdb: $GDB not found (set MSP430_GCC to the toolchain folder)" >&2; exit 1; }
+if ldd "$GDB" 2>/dev/null | grep -q "not found"; then
+    COMPAT=${XDG_CACHE_HOME:-$HOME/.cache}/picsimlab-msp430/gdb-compat
+    mkdir -p "$COMPAT"
+    for lib in libncursesw libtinfo; do
+        if [ ! -e "$COMPAT/$lib.so.5" ]; then
+            new=$(ldconfig -p | awk -v l="$lib.so.6" '$1 == l { print $NF; exit }')
+            [ -n "$new" ] || { echo "msp430-gdb: no $lib.so.6 on this system" >&2; exit 1; }
+            ln -sf "$new" "$COMPAT/$lib.so.5"
+        fi
+    done
+    LD_LIBRARY_PATH="$COMPAT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH
+fi
+exec "$GDB" "$@"

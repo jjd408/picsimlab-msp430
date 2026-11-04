@@ -290,6 +290,8 @@ void cboard_Solitaire::Run_CPU(void) {
     unsigned char pi = 0;
     if (PICSimLab.GetMcuPwr()) {
         for (long i = 0; i < NSTEP; i++) {
+            if (DbgStopped())
+                break;  // the debugger has the program stopped: time stands still, display and all
             MStep();
             InstCounterInc();
             steps++;
