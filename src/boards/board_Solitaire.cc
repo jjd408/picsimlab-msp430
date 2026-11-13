@@ -35,7 +35,7 @@ enum { O_LPWR = 0, O_RST, O_LCD, O_STATUS, O_BT01 };
 // Package pins of each button (hw/sol/sol.kicad_sch): SW1-SW3, stacks 1-9, suits 1-4
 static const int BUTTON_PIN[cboard_Solitaire::BUTTONS] = {
     3, 2, 1,                         // SW1 P3.0, SW2 P3.1, SW3 P3.2
-    7, 6, 5, 4, 31, 30, 29, 27, 26,  // stacks: P1.0-P1.6, P2.0, P2.1
+    7, 6, 5, 4, 31, 30, 29, 27, 26,  // stacks 1-7: P1.0-P1.6; waste (stack 8) P2.0, stock (stack 9) P2.1
     25, 24, 15, 14,                  // suits: P2.2, P2.3, P2.4, P2.5
 };
 // Keys for the same buttons
